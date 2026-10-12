@@ -120,18 +120,36 @@ namespace SpatialLingo.Characters
             m_transientCoroutine = StartCoroutine(ShowImageTransientCoroutine(m_rendererErrorWifi.gameObject, m_rendererErrorWifi));
         }
 
+        /// <summary>
+        /// Take the error icon down. Called when the service starts answering again, so a fault
+        /// that has cleared does not sit on screen implying the app is still stuck.
+        /// </summary>
+        public void ClearError()
+        {
+            if (m_currentErrorDisplayingRenderer == null)
+            {
+                return;
+            }
+
+            StopTransientCoroutine();
+        }
+
         private void StopTransientCoroutine(bool forceStop = true)
         {
             if (m_transientCoroutine != null)
             {
                 m_rendererErrorServer.gameObject.SetActive(false);
                 m_rendererErrorWifi.gameObject.SetActive(false);
-                m_transientCoroutine = null;
-                m_currentErrorDisplayingRenderer = null;
+
+                // Stop the coroutine before clearing the handle it is held by, or the fade
+                // carries on running and brings an icon back after it has been taken down.
                 if (forceStop)
                 {
                     StopCoroutine(m_transientCoroutine);
                 }
+
+                m_transientCoroutine = null;
+                m_currentErrorDisplayingRenderer = null;
             }
         }
 

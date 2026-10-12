@@ -3,7 +3,7 @@
     "com.meta.tutorial.framework": "https://github.com/meta-quest/Unity-UtilityPackages.git?path=com.meta.tutorial.framework",
     "com.meta.utilities": "https://github.com/meta-quest/Unity-UtilityPackages.git?path=com.meta.utilities",
     "com.meta.utilities.imageutilities": "1.0.0",
-    "com.meta.utilities.llamaapi": "1.0.0",
+    "com.meta.utilities.metamodelapi": "1.0.0",
     "com.meta.utilities.objectclassifier": "1.0.0",
     "com.meta.utilities.taxontracking": "1.0.0",
     "com.meta.xr.mrutilitykit": "81.0.0",

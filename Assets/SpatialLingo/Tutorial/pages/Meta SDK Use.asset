@@ -24,7 +24,9 @@ MonoBehaviour:
     for more.\n- [Hand Tracking](https://developers.meta.com/horizon/documentation/unity/unity-handtracking-overview/)\n-
     [Interaction](https://developers.meta.com/horizon/documentation/unity/unity-isdk-interaction-sdk-overview/)\n 
     - See [HandTrigger.cs](../Assets/SpatialLingo/Scripts/Interactions/HandTrigger.cs)
-    for more.\n- [Llama](https://www.llama.com/)\n- [Mixed Reality Utility Kit (MRUK)](https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/)\n-
+    for more.\n- [Meta Model API](https://ai.developer.meta.com/docs/getting-started/overview)\n 
+    - See [README.md](../Packages/com.meta.utilities.metamodelapi/README.md) for
+    more.\n- [Mixed Reality Utility Kit (MRUK)](https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/)\n-
     [Passthrough](https://developers.meta.com/horizon/documentation/unity/unity-passthrough)\n-
     [Voice](https://developers.meta.com/horizon/documentation/unity/voice-sdk-overview)\n 
     - See [VoiceSynthesis.md](../Packages/com.meta.utilities.speechandtext/Documentation~/VoiceSynthesis.md)

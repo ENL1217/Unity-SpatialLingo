@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4510294d23d964fe59443526f1ca7c4b, type: 3}
+  m_Name: Meta Model API_AssistantAI Wrapper
+  m_EditorClassIdentifier: 
+  m_displayName: AssistantAI Wrapper
+  m_hierarchyName: Meta Model API/AssistantAI Wrapper
+  m_context: {fileID: 11400000, guid: e3fdd78c2547fbb48873cc148e765433, type: 2}
+  m_markdownFile: {fileID: 0}
+  m_priority: 1016
+  m_overrideMarkdownText: "## AssistantAI Wrapper\n\n<a href=\"./Assets/SpatialLingo/Scripts/AI/AssistantAI.cs\">AssistantAI.cs</a>
+    encapsulates the prompts, chats, and data passing, JSON parsing necessary to
+    communicate with the model and receive C# objects.\n\nThe class is initialized
+    by passing an instance of the MetaModelRestApi:\n\n```csharp\nvar assistantAI
+    = new AssistantAI(modelApi);\n```\n\nBy abstracting the details away, the Assistant
+    AI interface allows for more targeted usage. As an example, word clouds are generated
+    from a single classification & cropped camera image (from an object recognition
+    pass). The result is a rich description of the scene with nouns, verbs, and adjectives.\n\n```csharp\n//
+    Definition (<a href=\"./Assets/SpatialLingo/Scripts/AI/AssistantAI.cs\">AssistantAI.cs</a>):\npublic
+    async Task<WordCloudResult> GenerateWordCloudData(SupportedLanguage userLanguage,
+    SupportedLanguage targetLanguage, string classification, string imageString,
+    string context = null)\n\n// Call:\nvar wordCloudResult = await m_assistantAI.GenerateWordCloudData(userLanguage,
+    targetLanguage, classification, imageString);\n\n// wordCloudResult contains
+    parts of speech for presentation to the user during gameplay\n```\n\nTo prepare
+    an image for a request, `GetNetworkSafeImageString` scales the texture down to
+    a pixel budget of about 400\xD7300 (never up), optionally blurs any faces in
+    it, and encodes it as a JPEG base64 data URL (`data:image/jpeg;base64,...`) ready
+    to pass as `imageString`. Smaller images keep requests fast and token usage low:\n\n```csharp\n//
+    Definition (<a href=\"./Assets/SpatialLingo/Scripts/AI/AssistantAI.cs\">AssistantAI.cs</a>):\npublic
+    static async Awaitable<string> GetNetworkSafeImageString(Texture2D imageSource,
+    FaceDetection faceBlur)\n\n// Call (pass null instead of a FaceDetection to skip
+    face blurring):\nvar imageString = await AssistantAI.GetNetworkSafeImageString(croppedImage,
+    faceDetection);\n```\n\n"
+  m_overrideMarkdownRoot: .\Packages\com.meta.utilities.metamodelapi/

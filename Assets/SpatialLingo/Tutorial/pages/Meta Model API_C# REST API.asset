@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4510294d23d964fe59443526f1ca7c4b, type: 3}
+  m_Name: Meta Model API_C# REST API
+  m_EditorClassIdentifier: 
+  m_displayName: C# REST API
+  m_hierarchyName: Meta Model API/C# REST API
+  m_context: {fileID: 11400000, guid: e3fdd78c2547fbb48873cc148e765433, type: 2}
+  m_markdownFile: {fileID: 0}
+  m_priority: 1015
+  m_overrideMarkdownText: "## C# REST API\n\n<a href=\".\\Packages\\com.meta.utilities.metamodelapi/com.meta.utilities.metamodelapi/Runtime/Scripts/MetaModelRestApi.cs\">MetaModelRestApi.cs</a>
+    encapsulates the endpoint requests, converting elements to/from C# objects to
+    URL requests.\n\nYou can start a new chat sequence using `api.StartNewChat(SystemPrompt);`
+    and continue the chat with additional messages. Giving the API more history allows
+    for more conversational based interactions:\n\n```csharp\nvar api = new MetaModelRestApi();\nvar
+    chat = api.StartNewChat(\"You are a language assistant.\");\nvar result = await
+    api.ContinueChat(chat, \"Translate \\\"Cat\\\" from English into Vietnamese.\");\n//
+    eg result: The translation of \"Cat\" from English into Vietnamese is \"M\xE8o\".\n```\n\n`ContinueChat`
+    and `ImageUnderstanding` return `null` when the service returns no usable completion
+    \u2014 including the exhausted-reasoning-budget case described above, which is
+    logged with its `finish_reason`. Callers should null-check the result.\n\nClient
+    defaults:\n\n- **Model:** `MetaModelRestApi.DefaultModel` (`muse-spark-1.3`)
+    at construction; see <a href=\".\\Packages\\com.meta.utilities.metamodelapi/#selecting-a-model\">Selecting
+    a Model</a>.\n- **Reasoning effort:** `ReasoningEffort.Minimal`.\n- **Completion
+    budget:** `max_completion_tokens` of 4096, generous because reasoning tokens
+    count against it.\n- **Request timeout:** 60 seconds. A request that gets no
+    reply in time is reported as a timeout (see <a href=\".\\Packages\\com.meta.utilities.metamodelapi/#service-health\">Service
+    Health</a>).\n\n\n### Request Metrics\n\nEvery response carries a `Usage` object
+    (`MetaModelRestApi.ModelUsage`) with the metrics the service reported for that
+    request, plus the measured round trip:\n\n- `PromptTokens`, `CompletionTokens`
+    (reasoning tokens included) and `TotalTokens`\n- `Model` \u2014 the model that
+    actually served the request, which need not be the one requested\n- `FinishReason`
+    \u2014 for example `stop`, or `length` when the completion budget ran out\n-
+    `RoundTripMilliseconds` \u2014 wall-clock time from sending the request to the
+    parsed reply (local work such as encoding an image is not included)\n- `CompletionTokensPerSecond`
+    \u2014 completion tokens over the round trip\n\n```csharp\nvar response = await
+    api.ContinueChat(chat, \"Translate \\\"Cat\\\" into Vietnamese.\");\nif (response
+    != null)\n{\n    var usage = response.Usage;\n    Debug.Log($\"{usage.Model}:
+    {usage.TotalTokens} tokens ({usage.CompletionTokens} completion) in {usage.RoundTripMilliseconds}
+    ms, finish: {usage.FinishReason}\");\n}\n```\n\n`ModelImageResponse` exposes
+    the same `Usage`. The MetaModelAPISample scene and the AI stats panel in the
+    Gym scene display these metrics for each request.\n\n\n### Service Health\n\n`ModelServiceHealth`
+    tracks whether the service is answering at all, across every request the client
+    makes. A single failed request means little \u2014 callers retry \u2014 so failures
+    are only reported once `FAILURES_BEFORE_DEGRADED` (3) requests in a row have
+    failed, and the next successful request clears the state immediately.\n\n- `ModelServiceHealth.IsDegraded`
+    \u2014 true while the service is considered down.\n- `ModelServiceHealth.LastFailure`
+    \u2014 why the last request failed: `Timeout`, `NoNetwork` or `ServerError` (`ModelRequestOutcome`).\n-
+    `ModelServiceHealth.ConsecutiveFailures` \u2014 the current run of failed requests.\n-
+    `ModelServiceHealth.DegradedChanged` \u2014 raised with `(true, outcome)` when
+    the service is reported down and with `(false, Success)` when it answers again.\n\n```csharp\nModelServiceHealth.DegradedChanged
+    += (degraded, outcome) =>\n{\n    if (!degraded)\n    {\n        HideServiceError();\n   
+    }\n    else if (outcome == ModelRequestOutcome.NoNetwork)\n    {\n        ShowNoNetworkError();\n   
+    }\n    else\n    {\n        ShowServerError();\n    }\n};\n```\n\nSpatial Lingo
+    uses this event to show the Wi-Fi or server error icon on the microphone UI.\n\n"
+  m_overrideMarkdownRoot: .\Packages\com.meta.utilities.metamodelapi/

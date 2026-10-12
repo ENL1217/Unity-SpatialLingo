@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.Profiling;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Meta.Utilities.ObjectClassifier
 {
@@ -60,10 +61,58 @@ namespace Meta.Utilities.ObjectClassifier
             }
         }
 
+        /// <summary>
+        /// Timing for a single <see cref="RunBlurring"/> call.
+        /// </summary>
+        public readonly struct BlurStats
+        {
+            /// <summary>Wall-clock time for the whole call, model load included.</summary>
+            public long TotalMilliseconds { get; }
+
+            /// <summary>
+            /// Time spent loading and compiling the detection model. Only the first call pays
+            /// this, so it is reported apart from the recurring blur cost.
+            /// </summary>
+            public long ModelLoadMilliseconds { get; }
+
+            /// <summary>Blur cost on its own, with any one-time model load taken out.</summary>
+            public long BlurMilliseconds => TotalMilliseconds - ModelLoadMilliseconds;
+
+            /// <summary>True when this call was the one that loaded the model.</summary>
+            public bool IncludedModelLoad { get; }
+
+            /// <summary>Source image dimensions, which drive most of the cost.</summary>
+            public int Width { get; }
+            public int Height { get; }
+
+            internal BlurStats(long totalMilliseconds, long modelLoadMilliseconds, bool includedModelLoad, int width, int height)
+            {
+                TotalMilliseconds = totalMilliseconds;
+                ModelLoadMilliseconds = modelLoadMilliseconds;
+                IncludedModelLoad = includedModelLoad;
+                Width = width;
+                Height = height;
+            }
+        }
+
+        /// <summary>Timing for the most recent blur, or null if none has run.</summary>
+        public BlurStats? LastBlur { get; private set; }
+
+        /// <summary>
+        /// Raised after each blur completes. Lets callers report timing without having to wrap
+        /// every <see cref="RunBlurring"/> call site themselves.
+        /// </summary>
+        public event Action<BlurStats> BlurCompleted;
+
         public async Awaitable<RenderTexture> RunBlurring()
         {
+            var total = Stopwatch.StartNew();
+            long modelLoadMilliseconds = 0;
+            var includedModelLoad = false;
+
             if (m_runtimeModel == null)
             {
+                var modelLoad = Stopwatch.StartNew();
                 Profiler.BeginSample("FaceDetection.LoadModel");
                 if (CompiledModelAsset != null)
                     m_runtimeModel = ModelLoader.Load(CompiledModelAsset);
@@ -72,6 +121,10 @@ namespace Meta.Utilities.ObjectClassifier
                 Profiler.EndSample();
 
                 await Task.Yield();
+
+                modelLoad.Stop();
+                modelLoadMilliseconds = modelLoad.ElapsedMilliseconds;
+                includedModelLoad = true;
             }
 
             m_texture = new RenderTexture(InputTexture.width, InputTexture.height, 32);
@@ -79,6 +132,11 @@ namespace Meta.Utilities.ObjectClassifier
             await Task.Yield();
 
             await FaceBlur.BlurFaces(m_runtimeModel, BackendType, InputTexture, m_texture, UseNMS);
+
+            total.Stop();
+            var stats = new BlurStats(total.ElapsedMilliseconds, modelLoadMilliseconds, includedModelLoad, InputTexture.width, InputTexture.height);
+            LastBlur = stats;
+            BlurCompleted?.Invoke(stats);
 
             return m_texture;
         }

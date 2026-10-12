@@ -1,6 +1,6 @@
 # Face Detection and Blurring
 
-Face blurring provides privacy protection by automatically detecting and anonymizing faces in camera images. This feature uses a neural network to locate faces and applies a pixelation blur effect to obscure them. This is used in the Spatial Lingo demo to protect user privacy when submitting an image to Llama API for analysis.
+Face blurring provides privacy protection by automatically detecting and anonymizing faces in camera images. This feature uses a neural network to locate faces and applies a pixelation blur effect to obscure them. This is used in the Spatial Lingo demo to protect user privacy when submitting an image to Meta Model API for analysis.
 
 ## RetinaFace Model
 

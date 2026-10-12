@@ -1,0 +1,11 @@
+{
+    "name": "com.meta.utilities.metamodelapi",
+    "version": "1.0.0",
+    "displayName": "Meta Model API Utilities",
+    "description": "Core components for API to Meta Model (Muse) endpoints",
+    "hideInEditor": false,
+    "dependencies": {
+        "com.unity.modules.jsonserialize": "1.0.0",
+        "com.meta.xr.sdk.core": "77.0.0"
+    }
+}

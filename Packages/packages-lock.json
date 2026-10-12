@@ -28,8 +28,8 @@
       "source": "embedded",
       "dependencies": {}
     },
-    "com.meta.utilities.llamaapi": {
-      "version": "file:com.meta.utilities.llamaapi",
+    "com.meta.utilities.metamodelapi": {
+      "version": "file:com.meta.utilities.metamodelapi",
       "depth": 0,
       "source": "embedded",
       "dependencies": {

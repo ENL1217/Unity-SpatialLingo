@@ -8,7 +8,8 @@ Meta SDK libraries used for Spatial Lingo:
 - [Hand Tracking](https://developers.meta.com/horizon/documentation/unity/unity-handtracking-overview/)
 - [Interaction](https://developers.meta.com/horizon/documentation/unity/unity-isdk-interaction-sdk-overview/)
   - See [HandTrigger.cs](../Assets/SpatialLingo/Scripts/Interactions/HandTrigger.cs) for more.
-- [Llama](https://www.llama.com/)
+- [Meta Model API](https://ai.developer.meta.com/docs/getting-started/overview)
+  - See [README.md](../Packages/com.meta.utilities.metamodelapi/README.md) for more.
 - [Mixed Reality Utility Kit (MRUK)](https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/)
 - [Passthrough](https://developers.meta.com/horizon/documentation/unity/unity-passthrough)
 - [Voice](https://developers.meta.com/horizon/documentation/unity/voice-sdk-overview)

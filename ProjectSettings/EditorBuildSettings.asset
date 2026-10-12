@@ -27,7 +27,7 @@ EditorBuildSettings:
     path: Assets/SpatialLingo/Scenes/Samples/CameraImageSample.unity
     guid: e0d92345dc06e4858a070d8cba2c4fd0
   - enabled: 0
-    path: Assets/SpatialLingo/Scenes/Samples/LlamaAPISample.unity
+    path: Assets/SpatialLingo/Scenes/Samples/MetaModelAPISample.unity
     guid: ce1037e09885e4e47a9c728aa44a16b6
   - enabled: 0
     path: Assets/SpatialLingo/Scenes/Samples/AssistantAISample.unity

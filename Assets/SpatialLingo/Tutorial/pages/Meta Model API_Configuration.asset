@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4510294d23d964fe59443526f1ca7c4b, type: 3}
+  m_Name: Meta Model API_Configuration
+  m_EditorClassIdentifier: 
+  m_displayName: Configuration
+  m_hierarchyName: Meta Model API/Configuration
+  m_context: {fileID: 11400000, guid: e3fdd78c2547fbb48873cc148e765433, type: 2}
+  m_markdownFile: {fileID: 0}
+  m_priority: 1014
+  m_overrideMarkdownText: "## Configuration\n\nBecause querying the service requires
+    a unique API key, the value needs to be configurable. The key should be stored
+    securely and passed when initializing the API client.\n\n\n### Security Considerations
+    for Quest Apps\n\n**Important:** Quest apps that are shipped to end users should
+    **not** directly embed Meta Model API keys in the application. Doing so exposes
+    your API key to anyone who inspects the app binary, potentially leading to unauthorized
+    usage and unexpected charges.\n\n**Recommended Approach:** Instead of embedding
+    API keys directly, Quest apps should:\n\n1. Authenticate the client/app with
+    your own backend server\n2. Have your server validate the client's identity and
+    entitlements\n3. Make Meta Model API calls from your server (or proxy to another
+    service provider, or use your own hosted model with something like Ollama)\n\nThis
+    approach keeps your API keys secure on the server side and gives you control
+    over rate limiting, user authentication, and cost management.\n\n\n### Custom
+    API Key Provider\n\nYou can configure custom authentication logic using `MetaModelRestApi.GetApiKeyAsync`.
+    This static delegate allows you to provide dynamic API keys and base URLs at
+    runtime:\n\n```csharp\nusing Meta.Utilities.MetaModelAPI;\n\n[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]\npublic
+    static void ConfigureCustomAuth()\n{\n    MetaModelRestApi.GetApiKeyAsync = async
+    () =>\n    {\n        // Example: Authenticate with your backend server\n       
+    string userToken = await AuthenticateWithYourServer();\n        string serverProxyUrl
+    = \"https://your-server.com/model-proxy/v1/\";\n\n        // Return tuple: (apiKey/token,
+    baseUrl)\n        // baseUrl can be null to use the default Meta Model API endpoint\n       
+    return (userToken, serverProxyUrl);\n    };\n}\n```\n\nThe function should return
+    a tuple containing:\n\n- `string apiKey`: The API key or authentication token
+    to use\n- `string baseUrl`: The base URL for the API endpoint (or `null` to use
+    the default `https://api.meta.ai/v1/`)\n\nThe base URL **must end with `/`**,
+    as in the example above. Endpoint paths such as `chat/completions` are resolved
+    relative to it, so without the trailing slash its last segment is dropped (`https://your-server.com/model-proxy/v1`
+    would send requests to `https://your-server.com/model-proxy/chat/completions`).\n\n\n###
+    Selecting a Model\n\n`MetaModelRestApi.DefaultModel` sets the model for every
+    client created from that point on, which is the usual way to configure it once
+    at startup:\n\n```csharp\nMetaModelRestApi.DefaultModel = \"muse-spark-1.3\";\n```\n\nIndividual
+    clients can override it after construction via the `Model` property, and `Effort`
+    controls how much the model reasons:\n\n```csharp\nvar api = new MetaModelRestApi\n{\n   
+    Model = \"muse-spark-1.2\",\n    Effort = MetaModelRestApi.ReasoningEffort.Medium,\n};\n```\n\n\n###
+    Development Configuration\n\nFor development and testing purposes only, you can
+    configure your API key and model by modifying <a href=\"./Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset\">Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset</a>
+    \u2014 set `MetaModelApiKey`, and `MetaModelId` if the default model is not available
+    to your key. This approach is suitable for local development but should not be
+    used in production builds shipped to users.\n\n"
+  m_overrideMarkdownRoot: .\Packages\com.meta.utilities.metamodelapi/

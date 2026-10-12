@@ -695,7 +695,7 @@ namespace SpatialLingo.Lessons
         {
             if (m_processingActivity.AdjectivesTargetLanguage == null || m_processingActivity.VerbsTargetLanguage == null)
             {
-                Debug.LogError("Null words, arrays were not populated. Check Llama API");
+                Debug.LogError("Null words, arrays were not populated. Check the AI service response");
                 return false;
             }
 

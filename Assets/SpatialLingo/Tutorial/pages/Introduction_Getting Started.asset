@@ -52,25 +52,28 @@ MonoBehaviour:
     Application Settings
 
 
-    For development, configure your Llama API key in <a
-    href="./Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset">Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset</a>.
+    For development, configure your Meta Model API key
+    as `MetaModelApiKey` in <a href="./Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset">Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset</a>.
+    Which models a key can reach varies by key, so if requests fail with `model_not_found`,
+    list the available ids with `GET https://api.meta.ai/v1/models` and set one as
+    `MetaModelId`.
 
 
-    **Important:**
-    Do not ship Quest apps with embedded API keys, as they can be extracted from
-    the app binary. For production, use `LlamaRestApi.GetApiKeyAsync` to implement
-    server-side authentication. See the <a href="./Packages/com.meta.utilities.llamaapi/README.md#configuration">Llama
-    API documentation</a> for details.
+    **Important:** Do not ship Quest apps with embedded API
+    keys, as they can be extracted from the app binary. For production, use `MetaModelRestApi.GetApiKeyAsync`
+    to implement server-side authentication. See the <a href="./Packages/com.meta.utilities.metamodelapi/README.md#configuration">Meta
+    Model API documentation</a> for details.
 
 
 
-    ## How to run the project in Unity
+    ## How to run the project in
+    Unity
 
 
-    1.
-    Make sure you''re using Unity 6000.0.51f1 or newer
+    1. Make sure you''re using Unity 6000.0.51f1 or newer
 
-    2. Load the <a href="./Assets/SpatialLingo/Scenes/MainScene.unity">Assets/SpatialLingo/Scenes/MainScene.unity</a>
+    2. Load
+    the <a href="./Assets/SpatialLingo/Scenes/MainScene.unity">Assets/SpatialLingo/Scenes/MainScene.unity</a>
     scene
 
     3. Open the Meta XR Simulator

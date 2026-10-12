@@ -3,7 +3,7 @@
 using System;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Meta.Utilities.LlamaAPI;
+using Meta.Utilities.MetaModelAPI;
 using Meta.Utilities.ObjectClassifier;
 using Meta.XR.Samples;
 using UnityEngine;
@@ -125,10 +125,10 @@ namespace SpatialLingo.AI
         // Instructor's character description for AI prompts
         private string m_characterPersonality = "Your personality is: fun, bubbly, exiting, and interesting. You speak in the first-person voice to talk about yourself. You use second-person voice to talk to the other interlocutor. You use third-person voice to talk about other people you see in the scene. You use gender-neutral words to describe people or behaviors. You use words at a grade school level that are easy for people to understand. The vocabulary you respond with should be understandable by a wide range of people.";
 
-        private LlamaRestApi m_llamaAPI;
+        private MetaModelRestApi m_modelApi;
 
 
-        public AssistantAI(LlamaRestApi llamaAPI) => m_llamaAPI = llamaAPI;
+        public AssistantAI(MetaModelRestApi modelApi) => m_modelApi = modelApi;
 
         public static string ContextReferenceOrDefault(string context = null)
         {
@@ -154,15 +154,18 @@ namespace SpatialLingo.AI
             var languageTo = SupportedLanguageEnumToEnglishName(toLanguage);
             var sentenceFrom = sentence;
             var request = $"Translate this sentence from \"{languageFrom}\" to \"{languageTo}\": \"{sentenceFrom}\" ";
-            var chat = m_llamaAPI.StartNewChat($"You are a translation assistant. You translate sentences from \"{languageFrom}\" to \"{languageTo}\". Do not use beginning or trailing quotation marks to wrap the response.");
-            var task = m_llamaAPI.ContinueChat(chat, request);
+            var chat = m_modelApi.StartNewChat($"You are a translation assistant. You translate sentences from \"{languageFrom}\" to \"{languageTo}\". Do not use beginning or trailing quotation marks to wrap the response.");
+            var task = m_modelApi.ContinueChat(chat, request);
             var response = await task;
             var translation = "";
             if (response != null)
             {
                 translation = response.Message.Text;
             }
-            var result = new TranslationResult(fromLanguage, toLanguage, sentence, translation, context);
+            var result = new TranslationResult(fromLanguage, toLanguage, sentence, translation, context)
+            {
+                Stats = response?.Usage,
+            };
             TranslationComplete?.Invoke(result);
             return result;
         }
@@ -178,10 +181,10 @@ namespace SpatialLingo.AI
 
             var languageName = SupportedLanguageEnumToEnglishName(targetLanguage);
 
-            var chat = m_llamaAPI.StartNewChat(
+            var chat = m_modelApi.StartNewChat(
                 $"You are a language assistant. You respond in the language: \"{languageName}\". You keep answers concise and focused. Your responses are only comma separated lists. You don't add any other context to the response. Read the entire request before responding. Do not include any partial responses, only return the final result.");
             var request = $"Generate a list of words related to the \"{languageName}\" word: \"{word}\". Separate the related words into separate lists by the corresponding part of speech: \"adjectives\", \"nouns\", \"verbs\". Each list should include: {wordCount} elements. Sort the results by most related first. Return only a json object with 3 keys (\"Adjectives\", \"Nouns\", \"Verbs\") mapping to their respective list as a json array. Return a correctly formatted json response.";
-            var task = m_llamaAPI.ContinueChat(chat, request);
+            var task = m_modelApi.ContinueChat(chat, request);
             var response = await task;
 
             var related = new RelatedWords();
@@ -194,7 +197,19 @@ namespace SpatialLingo.AI
                 Debug.LogWarning($"GenerateSpeechExamplesForWordCloud - Unable to parse JSON: {response.Message.Text}\n{e.Message}");
             }
 
-            var result = new RelatedWordResult(targetLanguage, word, related.Nouns, related.Adjectives, related.Verbs, context);
+            // The model does not always answer with the JSON that was asked for. When parsing
+            // fails the struct keeps its null arrays, so hand out empty ones instead - callers
+            // join these straight into display strings and a null takes the whole handler down.
+            var result = new RelatedWordResult(
+                targetLanguage,
+                word,
+                related.Nouns ?? Array.Empty<string>(),
+                related.Adjectives ?? Array.Empty<string>(),
+                related.Verbs ?? Array.Empty<string>(),
+                context)
+            {
+                Stats = response?.Usage,
+            };
             FindRelatedWordsComplete?.Invoke(result);
             return result;
         }
@@ -215,10 +230,10 @@ namespace SpatialLingo.AI
             {
                 var commaSeparatedWordList = string.Join(",", words);
 
-                var chat = m_llamaAPI.StartNewChat(
+                var chat = m_modelApi.StartNewChat(
                     $"You are a language assistant who translates from \"{fromLanguage}\" into \"{toLanguage}\". You respond in the language: \"{toLanguage}\". You keep answers concise and focused. Your responses are only comma separated lists. You don't add any other context to the response. Read the entire request before responding. Do not include any partial responses, only return the final result.");
                 var request = $"Please translate this comma separated list of words from \"{fromLanguage}\" into \"{toLanguage}\": {commaSeparatedWordList}. Return a comma separated list of the same words in \"{toLanguage}\". Preserve the ordering. Do not add any other commentary.";
-                var task = m_llamaAPI.ContinueChat(chat, request);
+                var task = m_modelApi.ContinueChat(chat, request);
                 var response = await task;
 
                 if (response == null || response.Message == null || string.IsNullOrWhiteSpace(response.Message.Text))
@@ -289,13 +304,16 @@ namespace SpatialLingo.AI
             // Get a description of the scene
             string system = null;
             string[] images = { imageString };
-            var response = await m_llamaAPI.ImageUnderstanding(system, prompt.ToString(), images);
+            var response = await m_modelApi.ImageUnderstanding(system, prompt.ToString(), images);
             var summary = "";
             if (response != null)
             {
                 summary = response.Message;
             }
-            var result = new ImageSummaryResult(targetLanguage, scope, imageSource, imageString, summary, context);
+            var result = new ImageSummaryResult(targetLanguage, scope, imageSource, imageString, summary, context)
+            {
+                Stats = response?.Usage,
+            };
             CollectImageSummaryComplete?.Invoke(result);
             return result;
         }
@@ -311,15 +329,18 @@ namespace SpatialLingo.AI
             var languageName = SupportedLanguageEnumToEnglishName(dialogueContext.TargetLanguage);
             var systemPrompt = $"You are a helpful language teacher. All your responses are always in the language \"{languageName}\". {m_characterPersonality} You keep your responses short and concise. Your replies are no more than 2 short sentences. You don't use filler words. You want to encourage learning and foster positive outcomes. Use second-person voice to talk with the interlocutor. Only return the words that are said verbally, do not include mannerisms or other physical feedback in your response. ";
             var request = $"Generate a sentence as if you are talking to someone (another interlocutor) and your goal is to get them to look around the room. You want them to explore the area to find objects to talk about. A current description of the scene is: [{dialogueContext.SceneDescription}] Use information from the scene description to communicate effectively to the other interlocutor where to look or where to move. Do not use beginning or trailing quotation marks to wrap the response.";
-            var chat = m_llamaAPI.StartNewChat(systemPrompt);
-            var response = await m_llamaAPI.ContinueChat(chat, request);
+            var chat = m_modelApi.StartNewChat(systemPrompt);
+            var response = await m_modelApi.ContinueChat(chat, request);
             var dialogue = "";
             if (response != null)
             {
                 dialogue = response.Message.Text;
             }
 
-            var result = new DialogueResult(dialogueContext.TargetLanguage, dialogue, context);
+            var result = new DialogueResult(dialogueContext.TargetLanguage, dialogue, context)
+            {
+                Stats = response?.Usage,
+            };
             GenerateDialogueComplete?.Invoke(result);
             return result;
         }
@@ -341,15 +362,18 @@ namespace SpatialLingo.AI
 
             request += " Do not use beginning or trailing quotation marks to wrap the response.";
 
-            var chat = m_llamaAPI.StartNewChat(systemPrompt);
-            var response = await m_llamaAPI.ContinueChat(chat, request);
+            var chat = m_modelApi.StartNewChat(systemPrompt);
+            var response = await m_modelApi.ContinueChat(chat, request);
             var dialogue = "";
             if (response != null)
             {
                 dialogue = response.Message.Text;
             }
 
-            var result = new DialogueResult(dialogueContext.TargetLanguage, dialogue, context);
+            var result = new DialogueResult(dialogueContext.TargetLanguage, dialogue, context)
+            {
+                Stats = response?.Usage,
+            };
             GenerateDialogueComplete?.Invoke(result);
             return result;
         }
@@ -396,7 +420,7 @@ namespace SpatialLingo.AI
             if (imageString != null)
             {
                 var list = new string[] { imageString };
-                var task = m_llamaAPI.ImageUnderstanding(prompt, request.ToString(), list);
+                var task = m_modelApi.ImageUnderstanding(prompt, request.ToString(), list);
                 var response = await task;
                 if (response != null)
                 {
@@ -405,8 +429,8 @@ namespace SpatialLingo.AI
             }
             else
             {
-                var chat = m_llamaAPI.StartNewChat(prompt);
-                var task = m_llamaAPI.ContinueChat(chat, request.ToString());
+                var chat = m_modelApi.StartNewChat(prompt);
+                var task = m_modelApi.ContinueChat(chat, request.ToString());
                 var response = await task;
                 if (response != null)
                 {
@@ -460,8 +484,8 @@ namespace SpatialLingo.AI
             _ = request.Append($" Only include a single best JSON formatted response without any additional commentary.");
             _ = request.Append($" Do not include alternative JSON results. Include only a JSON formatted response.");
 
-            var chat = m_llamaAPI.StartNewChat(prompt);
-            var task = m_llamaAPI.ContinueChat(chat, request.ToString());
+            var chat = m_modelApi.StartNewChat(prompt);
+            var task = m_modelApi.ContinueChat(chat, request.ToString());
             var response = await task;
             var responseText = "";
             if (response != null)
@@ -562,28 +586,28 @@ namespace SpatialLingo.AI
             request += $" Respond yes or no on the first line. If the response is \"no\", on the second line: also include a very short sentence (in \"{feedbackLanguage}\") with a reason as to why the transcribed speech is not acceptable. Don't repeat the input statement, only a brief reason why the input is not accepted. ";
 
             // Set system prompt
-            var chat = m_llamaAPI.StartNewChat(prompt);
+            var chat = m_modelApi.StartNewChat(prompt);
 
             // Insert history for mistranscribed words
-            _ = m_llamaAPI.AddChatHistoryAsUser(chat, "Sometimes words in the user statement are mistranscribed, like \"La Silla\" may be mistranscribed as \"La CIA\"." +
+            _ = m_modelApi.AddChatHistoryAsUser(chat, "Sometimes words in the user statement are mistranscribed, like \"La Silla\" may be mistranscribed as \"La CIA\"." +
                                                   " If you evaluate the user statement as incorrect, please re-evaluate considering phonetically similar words may be mistranscriptions." +
                                                   " The intended user word may not have been transcribed correctly, but that should not prevent the entire statement to be incorrect in this context." +
                                                   " This advice should be generalized for all transcribed words, not just the example given here.");
-            _ = m_llamaAPI.AddChatHistoryAsAI(chat, "Understood: Example words like \"La Silla\" may be mistranscribed but because of phonetic similarity, if the example phrase \"La CIA\" is found:" +
+            _ = m_modelApi.AddChatHistoryAsAI(chat, "Understood: Example words like \"La Silla\" may be mistranscribed but because of phonetic similarity, if the example phrase \"La CIA\" is found:" +
                                                 " then the user intent to say \"La Silla\" should be substituted in the user statement for \"La CIA\". " +
                                                 " This advice should apply generally for all words in the user statement that are phonetically similar to the target words.");
 
             if (hasVerbs & hasAdjectives)
             {
-                _ = m_llamaAPI.AddChatHistoryAsUser(chat, "The user statement must have at least one word from each of the following lists to be accepted as correct:\n" +
+                _ = m_modelApi.AddChatHistoryAsUser(chat, "The user statement must have at least one word from each of the following lists to be accepted as correct:\n" +
                                                       $" nouns: {nounList}\n adjectives: {adjList}\n verbs: {verbList}");
-                _ = m_llamaAPI.AddChatHistoryAsAI(chat, "Understood.");
+                _ = m_modelApi.AddChatHistoryAsAI(chat, "Understood.");
 
             }
 
 
 
-            var task = m_llamaAPI.ContinueChat(chat, request);
+            var task = m_modelApi.ContinueChat(chat, request);
             var response = await task;
             var answer = false;
             var reason = "";

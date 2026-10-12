@@ -2,13 +2,13 @@
 
 # Spatial Lingo
 
-Spatial Lingo is a spatialized language practice experience, guiding users to identify and describe objects around their environment in a target language. This was made possible using Meta libraries, such as [Llama](https://www.llama.com/),  [Mixed Reality Utility Kit (MRUK)](https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/), and the [Voice SDK](https://developers.meta.com/horizon/documentation/unity/voice-sdk-overview). This experience supports both hand tracking and controllers.
+Spatial Lingo is a spatialized language practice experience, guiding users to identify and describe objects around their environment in a target language. This was made possible using Meta libraries, such as the [Meta Model API](https://ai.developer.meta.com/),  [Mixed Reality Utility Kit (MRUK)](https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/), and the [Voice SDK](https://developers.meta.com/horizon/documentation/unity/voice-sdk-overview). This experience supports both hand tracking and controllers.
 
 Follow Golly Gosh (the polyglot!) as they lead you through your own, real-world space, allowing you to practice your vocabulary using familiar objects. Grow the language tree by completing lessons from Golly Gosh, learning nouns, verbs, and adjectives along the way!
 
 # Project Overview
 
-The **Spatial Lingo** project helps Unity developers understand and develop for multiple Meta features: Passthrough Camera API (PCA), Voice SDK, Interaction SDK, Mixed Reality Utility Kit (MRUK), Llama API, and Unity Sentis. The main scene as well as multiple sample scenes demonstrate the implementation and usefulness of each feature.
+The **Spatial Lingo** project helps Unity developers understand and develop for multiple Meta features: Passthrough Camera API (PCA), Voice SDK, Interaction SDK, Mixed Reality Utility Kit (MRUK), Meta Model API, and Unity Sentis. The main scene as well as multiple sample scenes demonstrate the implementation and usefulness of each feature.
 
 | Gym Scene | Word Cloud Scene | Character Scene | Camera Image Scene |
 |:-------------:|:--------------------:|:---------------------:|:------------:|
@@ -32,9 +32,9 @@ git clone https://github.com/oculus-samples/Unity-SpatialLingo.git
 
 ### Application Settings
 
-For development, configure your Llama API key in [Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset](./Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset).
+For development, configure your Meta Model API key as `MetaModelApiKey` in [Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset](./Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset). Which models a key can reach varies by key, so if requests fail with `model_not_found`, list the available ids with `GET https://api.meta.ai/v1/models` and set one as `MetaModelId`.
 
-**Important:** Do not ship Quest apps with embedded API keys, as they can be extracted from the app binary. For production, use `LlamaRestApi.GetApiKeyAsync` to implement server-side authentication. See the [Llama API documentation](Packages/com.meta.utilities.llamaapi/README.md#configuration) for details.
+**Important:** Do not ship Quest apps with embedded API keys, as they can be extracted from the app binary. For production, use `MetaModelRestApi.GetApiKeyAsync` to implement server-side authentication. See the [Meta Model API documentation](Packages/com.meta.utilities.metamodelapi/README.md#configuration) for details.
 
 ## How to run the project in Unity
 
@@ -65,7 +65,7 @@ Users' speech is transcribed when presented with a word cloud, which is also sup
 
 ## Lesson Evaluation
 
-A user's response is sent to Llama to determine if the user has responded well enough to complete a given lesson's word cloud.
+A user's response is sent to the Meta Model API to determine if the user has responded well enough to complete a given lesson's word cloud.
 
 # Dependencies
 
@@ -86,7 +86,7 @@ More information about the services and systems of this project can be found in 
 
 ## LLM
 
-- [Llama](Packages/com.meta.utilities.llamaapi/README.md)
+- [Meta Model API](Packages/com.meta.utilities.metamodelapi/README.md)
 
 ## Object Recognition and Tracking
 

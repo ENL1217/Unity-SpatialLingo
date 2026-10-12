@@ -1,0 +1,112 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4510294d23d964fe59443526f1ca7c4b, type: 3}
+  m_Name: Meta Model API_API Overview
+  m_EditorClassIdentifier: 
+  m_displayName: API Overview
+  m_hierarchyName: Meta Model API/API Overview
+  m_context: {fileID: 11400000, guid: e3fdd78c2547fbb48873cc148e765433, type: 2}
+  m_markdownFile: {fileID: 0}
+  m_priority: 1013
+  m_overrideMarkdownText: "## API Overview\n\nRequests should start with a base URL:
+    `https://api.meta.ai/v1`, and end with an endpoint path. Here only the `/chat/completions`
+    endpoint is described. The protocol is OpenAI-compatible.\n\n\n### Choosing a
+    Model\n\nWhich models a given key can reach varies by key and account tier, so
+    a hardcoded model id may fail with `model_not_found`. List what a key can actually
+    use:\n\n```bash\nexport MODEL_API_KEY='YOUR_UNIQUE_META_MODEL_API_KEY_GOES_HERE'\n\ncurl
+    -X GET https://api.meta.ai/v1/models \\\n-H \"Authorization: Bearer $MODEL_API_KEY\"\n```\n\n```json\n{\n   
+    \"object\": \"list\",\n    \"data\": [\n        { \"id\": \"muse-spark-1.3\",
+    \"object\": \"model\", \"created\": 0, \"owned_by\": \"meta\" }\n    ]\n}\n```\n\nPick
+    an id from that list and set it on the client (see <a href=\".\\Packages\\com.meta.utilities.metamodelapi/#selecting-a-model\">Selecting
+    a Model</a>). The examples in this document use `muse-spark-1.3`; replace it
+    with an id your key can reach.\n\n\n### Reasoning and Token Budgets\n\nMuse Spark
+    always reasons before it answers, and **reasoning tokens are charged against
+    the completion budget**. If `max_completion_tokens` is too small, the model spends
+    the whole budget thinking and returns a `null` content with `\"finish_reason\":
+    \"length\"`:\n\n```json\n{\n    \"choices\": [\n        {\n            \"finish_reason\":
+    \"length\",\n            \"index\": 0,\n            \"message\": { \"content\":
+    null, \"role\": \"assistant\" }\n        }\n    ],\n    \"usage\": { \"completion_tokens\":
+    32, \"completion_tokens_details\": { \"reasoning_tokens\": 29 } }\n}\n```\n\nBudget
+    for the reasoning as well as the answer, and use `reasoning_effort` (`minimal`,
+    `low`, `medium`, `high`) to trade quality against latency and cost. `MetaModelRestApi`
+    sends `minimal` by default, the lowest effort the service accepts; `none` is
+    rejected.\n\n\n### Text Chat Completion\n\nA chat consists of: an (optional)
+    system prompt, and a list of (at least one) user messages. The system role is
+    used to define how the AI should behave. The user role is used to pass messages
+    or similar information to the AI on behalf of the user. An example curl command:\n\n```bash\ncurl
+    -X POST https://api.meta.ai/v1/chat/completions \\\n-H \"Content-Type: application/json\"
+    \\\n-H \"Authorization: Bearer $MODEL_API_KEY\" \\\n-d '{\n    \"model\": \"muse-spark-1.3\",\n   
+    \"messages\": [\n        {\n            \"role\": \"system\",\n            \"content\":
+    \"You are a translation assistant. Translate English to Spanish. No quotes.\"\n       
+    },\n        {\n            \"role\": \"user\",\n            \"content\": \"Translate:
+    Where is the nearest coffee shop?\"\n        }\n    ],\n    \"max_completion_tokens\":
+    1024,\n    \"reasoning_effort\": \"minimal\"\n}'\n```\n\nExample response:\n\n```json\n{\n   
+    \"id\": \"chatcmpl-01a0874f-f364-7a42-b703-f8bc5c6d1396\",\n    \"choices\":
+    [\n        {\n            \"finish_reason\": \"stop\",\n            \"index\":
+    0,\n            \"message\": {\n                \"content\": \"\xBFD\xF3nde est\xE1
+    la cafeter\xEDa m\xE1s cercana?\",\n                \"refusal\": null,\n               
+    \"role\": \"assistant\"\n            },\n            \"logprobs\": null\n       
+    }\n    ],\n    \"created\": 1788976558,\n    \"model\": \"muse-spark-1.3\",\n   
+    \"object\": \"chat.completion\",\n    \"usage\": {\n        \"completion_tokens\":
+    119,\n        \"prompt_tokens\": 34,\n        \"total_tokens\": 153,\n       
+    \"completion_tokens_details\": { \"reasoning_tokens\": 100 }\n    }\n}\n```\n\nThe
+    completion text lives at `choices[0].message.content`.\n\n\n### Image Understanding\n\nAn
+    image can be passed, using a URL or a base64 encoded string. Note that `content`
+    becomes an array of content parts rather than a plain string, and that **images
+    are only processed on `user`-role messages**:\n\n```bash\ncurl -X POST https://api.meta.ai/v1/chat/completions
+    \\\n-H \"Content-Type: application/json\" \\\n-H \"Authorization: Bearer $MODEL_API_KEY\"
+    \\\n-d '{\n    \"model\": \"muse-spark-1.3\",\n    \"messages\": [\n    {\n     
+    \"role\": \"system\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n         
+    \"text\": \"You are a helpful assistant that provides concise answers.\"\n       
+    }\n      ]\n    },\n    {\n      \"role\": \"user\",\n      \"content\": [\n       
+    {\n          \"type\": \"text\",\n          \"text\": \"What word best describes
+    the object in this image? Only respond with the minimal amount of words. Do not
+    include any punctuation.\"\n        },\n        {\n          \"type\": \"image_url\",\n         
+    \"image_url\": {\n            \"url\": \"https://www.wikipedia.org/portal/wikipedia.org/assets/img/Wikipedia-logo-v2@2x.png\"\n         
+    }\n        }\n      ]\n    }\n  ]\n}'\n```\n\nExample response:\n\n```json\n{\n   
+    \"id\": \"chatcmpl-01a131e4-997f-7407-bc88-92cdac5cb5ae\",\n    \"choices\":
+    [\n        {\n            \"finish_reason\": \"stop\",\n            \"index\":
+    0,\n            \"message\": {\n                \"content\": \"globe\",\n               
+    \"refusal\": null,\n                \"role\": \"assistant\"\n            },\n           
+    \"logprobs\": null\n        }\n    ],\n    \"created\": 1791838399,\n    \"model\":
+    \"muse-spark-1.3\",\n    \"object\": \"chat.completion\",\n    \"usage\": {\n       
+    \"completion_tokens\": 517,\n        \"prompt_tokens\": 230,\n        \"total_tokens\":
+    747,\n        \"completion_tokens_details\": { \"reasoning_tokens\": 505 }\n   
+    }\n}\n```\n\nNo `reasoning_effort` is set in this request, so the service default
+    applies; most of the completion tokens are reasoning. Setting `\"reasoning_effort\":
+    \"minimal\"` reduces them substantially.\n\nSwap the `url` value for `data:image/jpeg;base64,...`
+    to send a local image, and append more `image_url` parts for multi-image prompts.\n\nAccepted
+    MIME types are `image/jpeg`, `image/jpg`, `image/png`, `image/gif`, `image/webp`,
+    and `image/x-icon`. Inline images are capped at 50 MB, with a maximum of 50 images
+    per request. Token usage scales with resolution, so downscaling before sending
+    meaningfully reduces cost.\n\n\n### JSON Formatting\n\nThe AI can be prompted
+    to return JSON objects rather than freeform statements:\n\n```bash\ncurl -X POST
+    https://api.meta.ai/v1/chat/completions \\\n-H \"Content-Type: application/json\"
+    \\\n-H \"Authorization: Bearer $MODEL_API_KEY\" \\\n-d '{\n    \"model\": \"muse-spark-1.3\",\n   
+    \"messages\": [\n        {\n            \"role\": \"user\",\n            \"content\":
+    \"Dissect the following sentence into nouns, verbs, and adjectives. Return a
+    json formatted object with keys: \\\"nouns\\\", \\\"verbs\\\", and \\\"adjectives\\\".
+    Do not include any extra information, only the json object: \\\"Where is the
+    beef?\\\"\"\n        }\n    ],\n    \"max_completion_tokens\": 1024\n}'\n```\n\nExample
+    response:\n\n```json\n{\n    \"id\": \"chatcmpl-01a131e3-e15e-7492-ba5f-be0ed3283712\",\n   
+    \"choices\": [\n        {\n            \"finish_reason\": \"stop\",\n           
+    \"index\": 0,\n            \"message\": {\n                \"content\": \"{\\\"nouns\\\":
+    [\\\"beef\\\"], \\\"verbs\\\": [\\\"is\\\"], \\\"adjectives\\\": []}\",\n               
+    \"refusal\": null,\n                \"role\": \"assistant\"\n            },\n           
+    \"logprobs\": null\n        }\n    ],\n    \"created\": 1791838338,\n    \"model\":
+    \"muse-spark-1.3\",\n    \"object\": \"chat.completion\",\n    \"usage\": {\n       
+    \"completion_tokens\": 784,\n        \"prompt_tokens\": 58,\n        \"total_tokens\":
+    842,\n        \"completion_tokens_details\": { \"reasoning_tokens\": 754 }\n   
+    }\n}\n```\n\nThe JSON arrives as a string in `choices[0].message.content` and
+    still needs to be parsed. For a hard guarantee rather than a prompt-level request,
+    pass `\"response_format\": {\"type\": \"json_object\"}`.\n\n"
+  m_overrideMarkdownRoot: .\Packages\com.meta.utilities.metamodelapi/

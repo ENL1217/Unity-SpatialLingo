@@ -26,8 +26,8 @@ MonoBehaviour:
     Spatial
     Lingo is a spatialized language practice experience, guiding users to identify
     and describe objects around their environment in a target language. This was
-    made possible using Meta libraries, such as <a href="https://www.llama.com/">Llama</a>, 
-    <a href="https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/">Mixed
+    made possible using Meta libraries, such as the <a href="https://ai.developer.meta.com/">Meta
+    Model API</a>,  <a href="https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/">Mixed
     Reality Utility Kit (MRUK)</a>, and the <a href="https://developers.meta.com/horizon/documentation/unity/voice-sdk-overview">Voice
     SDK</a>. This experience supports both hand tracking and controllers.
 
@@ -46,7 +46,7 @@ MonoBehaviour:
     The **Spatial Lingo** project
     helps Unity developers understand and develop for multiple Meta features: Passthrough
     Camera API (PCA), Voice SDK, Interaction SDK, Mixed Reality Utility Kit (MRUK),
-    Llama API, and Unity Sentis. The main scene as well as multiple sample scenes
+    Meta Model API, and Unity Sentis. The main scene as well as multiple sample scenes
     demonstrate the implementation and usefulness of each feature.
 
 

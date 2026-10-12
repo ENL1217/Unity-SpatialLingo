@@ -135,7 +135,6 @@ namespace Meta.Utilities.ObjectClassifier
         // Static model input dimensions:
         private const int YOLO_MODEL_IMAGE_WIDTH = 640;
         private const int YOLO_MODEL_IMAGE_HEIGHT = 640;
-        private ModelAsset m_model;
         private Worker m_worker;
         private string[] m_labels;
         private Model m_sentisModel;
@@ -146,7 +145,6 @@ namespace Meta.Utilities.ObjectClassifier
         private int m_layersPerFrame = 1; // Default to lowest option
         private IEnumerator m_workerFrameSchedule = null;
         private bool m_hasEnumerator = false;
-        private int m_layersSoFar = 0;
         private bool m_waitingForOutput0 = false;
         private Tensor<float> m_outputPull0 = null;
         private Tensor<float> m_outputResult0 = null;
@@ -161,7 +159,6 @@ namespace Meta.Utilities.ObjectClassifier
 
         public void Initialize(ModelAsset model, string[] labels, ClassificationOption[] options = null)
         {
-            m_model = model;
             m_labels = labels;
             m_sentisModel = ModelLoader.Load(model);
             m_worker = new Worker(m_sentisModel, BACKEND);
@@ -328,14 +325,12 @@ namespace Meta.Utilities.ObjectClassifier
                 var layerProcessedCount = 0;
                 while (m_workerFrameSchedule.MoveNext())
                 {
-                    ++m_layersSoFar;
                     if (layerProcessedCount == m_layersPerFrame)
                     {
                         return;
                     }
                     ++layerProcessedCount;
                 }
-                m_layersSoFar = 0;
                 m_hasEnumerator = false;
                 m_workerFrameSchedule = null;
                 m_waitingForOutput0 = true;

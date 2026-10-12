@@ -67,9 +67,9 @@ MonoBehaviour:
     ## Lesson Evaluation
 
 
-    A user''s response is sent to Llama
-    to determine if the user has responded well enough to complete a given lesson''s
-    word cloud.
+    A user''s response is sent to the
+    Meta Model API to determine if the user has responded well enough to complete
+    a given lesson''s word cloud.
 
 
 '

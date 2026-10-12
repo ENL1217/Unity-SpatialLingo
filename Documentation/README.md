@@ -8,7 +8,7 @@ Technical documentation for key features and systems is contained in the followi
 - [Meta SDK](./MetaSdk.md): List of key Meta features used in the project.
 - [Face Blurring](../Packages/com.meta.utilities.objectclassifier/Documentation~/FaceBlurring.md): Description of face detection and blurring for privacy protection, RetinaFace model details, Quest CPU backend optimization.
 - [Image Object Recognition](../Packages/com.meta.utilities.objectclassifier/Documentation~/ImageObjectRecognition.md): Description of: Object Recognition and the Unity Inference Engine, overview of the specific YOLO implementation used, sample scene details.
-- [Llama](../Packages/com.meta.utilities.llamaapi/README.md): Overview of Llama API, use case examples of specific chat endpoints, discussion of C# implementation, sample scene details.
+- [Meta Model API](../Packages/com.meta.utilities.metamodelapi/README.md): Overview of Meta Model API, choosing a model, use case examples of text chat and image understanding, discussion of C# implementation, sample scene details.
 - [MRUK](./MRUK.md): Discussion of Mixed Reality Utility Kit (MRUK), sample scene details.
 - [Occlusion](./Occlusion.md): Overview of Meta's occlusion package, example code.
 - [PCA](../Packages/com.meta.utilities.cameratracking/README.md): Overview of Passthrough Camera API (PCA), code examples of: camera world orientation, camera image screenspace, and depth estimation. Sample scene details.

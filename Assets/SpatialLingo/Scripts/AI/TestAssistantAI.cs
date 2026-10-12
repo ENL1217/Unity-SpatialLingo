@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Meta Platforms, Inc. and affiliates.
 
 using System;
-using Meta.Utilities.LlamaAPI;
+using Meta.Utilities.MetaModelAPI;
 using Meta.Utilities.ObjectClassifier;
 using Meta.XR.Samples;
 using TMPro;
@@ -39,7 +39,7 @@ namespace SpatialLingo.AI
         [SerializeField] private TMP_InputField m_inputTextFieldWordList;
 
         // Input texture for word cloud generation
-        [Tooltip("Example Image & Classification LLAMA Image Sensing")]
+        [Tooltip("Example Image & Classification for Image Sensing")]
         [SerializeField] private Texture2D[] m_inputExampleTrackedImages;
         [SerializeField] private string[] m_inputExampleTrackedClassifications;
 
@@ -51,8 +51,8 @@ namespace SpatialLingo.AI
         {
             // SpatialLingoSettings.LoadSettings();
 
-            var llamaAPI = new LlamaRestApi();
-            m_assistantAI = new AssistantAI(llamaAPI);
+            var modelApi = new MetaModelRestApi();
+            m_assistantAI = new AssistantAI(modelApi);
 
             // Clear Text Fields
             m_inputTextFieldTranslation.text = "";

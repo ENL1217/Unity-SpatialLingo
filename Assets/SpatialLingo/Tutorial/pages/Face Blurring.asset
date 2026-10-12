@@ -21,9 +21,9 @@ MonoBehaviour:
     privacy protection by automatically detecting and anonymizing faces in camera
     images. This feature uses a neural network to locate faces and applies a pixelation
     blur effect to obscure them. This is used in the Spatial Lingo demo to protect
-    user privacy when submitting an image to Llama API for analysis.\n\n\n## RetinaFace
-    Model\n\nThe face detection system uses RetinaFace, a robust single-stage face
-    detector based on the ResNet50 architecture. RetinaFace performs multi-scale
+    user privacy when submitting an image to Meta Model API for analysis.\n\n\n##
+    RetinaFace Model\n\nThe face detection system uses RetinaFace, a robust single-stage
+    face detector based on the ResNet50 architecture. RetinaFace performs multi-scale
     face detection using anchor boxes at different feature pyramid levels.\n\nFor
     more information on RetinaFace, visit: <a href=\"https://arxiv.org/abs/1905.00641\">`RetinaFace
     Whitepaper`</a>.\n\nThe specific model used in this project is available under

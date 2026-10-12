@@ -3,7 +3,7 @@ using System;
 using Meta.Utilities;
 using Meta.Utilities.CameraTracking;
 using Meta.Utilities.ImageUtilities;
-using Meta.Utilities.LlamaAPI;
+using Meta.Utilities.MetaModelAPI;
 using Meta.Utilities.ObjectClassifier;
 using Meta.XR.Samples;
 using SpatialLingo.AI;
@@ -55,6 +55,18 @@ namespace SpatialLingo.Gym
 
         private AssistantAI m_assistant;
 
+        /// <summary>
+        /// The assistant driving this station's queries. Null until the gym systems report ready,
+        /// which may happen after other components have already started.
+        /// </summary>
+        public AssistantAI Assistant => m_assistant;
+
+        /// <summary>
+        /// Raised once <see cref="Assistant"/> exists. Subscribers that start late should check
+        /// <see cref="Assistant"/> first, since this fires only once and may already have passed.
+        /// </summary>
+        public event Action<AssistantAI> AssistantReady;
+
         private int m_selectedLanguageAIndex = 0;
         private int m_selectedLanguageBIndex = 1;
         private bool m_isTranslating = false;
@@ -88,8 +100,8 @@ namespace SpatialLingo.Gym
 
         private void StartInternals()
         {
-            var llama = new LlamaRestApi();
-            m_assistant = new AssistantAI(llama);
+            var modelApi = new MetaModelRestApi();
+            m_assistant = new AssistantAI(modelApi);
 
             m_assistant.TranslationComplete += OnTranslationComplete;
             m_assistant.FindRelatedWordsComplete += OnFindRelatedWordsComplete;
@@ -129,6 +141,8 @@ namespace SpatialLingo.Gym
 
             m_imageClassifier.ImageProcessedComplete += OnImageProcessedCompleteEvent;
             UpdateConstantDisplays();
+
+            AssistantReady?.Invoke(m_assistant);
         }
 
         private async void OnDebugImageBlurFaceButton(CanvasXRButton button)

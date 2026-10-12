@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Meta.Utilities.CameraTaxonTracking;
 using Meta.Utilities.CameraTracking;
-using Meta.Utilities.LlamaAPI;
+using Meta.Utilities.MetaModelAPI;
 using Meta.Utilities.ObjectClassifier;
 using Meta.XR;
 using Meta.XR.EnvironmentDepth;
@@ -149,9 +149,9 @@ namespace SpatialLingo.AppSystems
             // Tracking
             m_taxonTracker = new CameraTaxonTracker(m_environmentRaycastManager, m_cameraTextureManager, m_imageObjectClassifier);
 
-            // Llama & AI
-            var llama = new LlamaRestApi();
-            var assistant = new AssistantAI(llama);
+            // Meta Model API & AI
+            var modelApi = new MetaModelRestApi();
+            var assistant = new AssistantAI(modelApi);
             // LessonsManager
             m_lessonManager = new LessonsManager(m_taxonTracker, assistant, AssistantAI.SupportedLanguage.English, AssistantAI.SupportedLanguage.Spanish, m_faceBlur);
             // Lesson Interaction
