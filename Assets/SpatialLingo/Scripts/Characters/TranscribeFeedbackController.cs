@@ -2,6 +2,7 @@
 
 using System.Collections;
 using Meta.XR.Samples;
+using SpatialLingo.Debugging;
 using TMPro;
 using UnityEngine;
 
@@ -30,6 +31,9 @@ namespace SpatialLingo.Characters
 
         [SerializeField] private TextMeshPro m_textField;
 
+        [Tooltip("Testing-only readout shown below the mic icon. Visibility is driven by SpatialLingoDebug.")]
+        [SerializeField] private LessonDebugPanel m_debugPanel;
+
         [SerializeField] private bool m_useMicAsVolumeSource = false;
         [SerializeField] private float m_audioThresholdListening = 0.05f;
 
@@ -46,6 +50,11 @@ namespace SpatialLingo.Characters
         private float[] m_micSamplesValues;
 
         private MeshRenderer m_currentErrorDisplayingRenderer;
+
+        /// <summary>
+        /// Debug readout under the mic icon, or null when the prefab has none wired.
+        /// </summary>
+        public LessonDebugPanel DebugPanel => m_debugPanel;
 
         private void Awake()
         {

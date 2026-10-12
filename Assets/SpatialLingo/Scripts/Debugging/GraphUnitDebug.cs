@@ -18,10 +18,17 @@ namespace SpatialLingo.Debugging
     public class GraphUnitDebug : MonoBehaviour
     {
         private const string DEBUG_FMT = "Current state: {0}";
+        // Kept short: the button is 160 wide and a longer label wraps to two lines.
+        private const string DEBUG_MODE_FMT = "DEBUG: {0}";
+
         [SerializeField] private TMP_Text m_debugText;
         [SerializeField] private Button m_skipButton;
         [SerializeField] private Button m_boundsButton;
         [SerializeField] private TMP_Text m_sessionText;
+
+        [Tooltip("Toggles the room scan overlay, the lesson panel under the mic and the activity panel.")]
+        [SerializeField] private Button m_debugModeButton;
+        [SerializeField] private TMP_Text m_debugModeLabel;
 
         private void Start()
         {
@@ -29,6 +36,10 @@ namespace SpatialLingo.Debugging
             m_skipButton?.onClick.AddListener(NextState);
             m_boundsButton?.gameObject.SetActive(false);
             OnGraphUnitChanged(SkippableUnit.CurrentName);
+
+            m_debugModeButton?.onClick.AddListener(ToggleDebugMode);
+            SpatialLingoDebug.Changed += OnDebugModeChanged;
+            OnDebugModeChanged(SpatialLingoDebug.Enabled);
         }
 
         private void OnDestroy()
@@ -43,7 +54,23 @@ namespace SpatialLingo.Debugging
                 m_boundsButton.onClick.RemoveListener(NextState);
             }
 
+            if (m_debugModeButton != null)
+            {
+                m_debugModeButton.onClick.RemoveListener(ToggleDebugMode);
+            }
+
+            SpatialLingoDebug.Changed -= OnDebugModeChanged;
             SkippableUnit.UnitEntered -= OnGraphUnitChanged;
+        }
+
+        private static void ToggleDebugMode() => SpatialLingoDebug.Toggle();
+
+        private void OnDebugModeChanged(bool enabled)
+        {
+            if (m_debugModeLabel != null)
+            {
+                m_debugModeLabel.text = string.Format(DEBUG_MODE_FMT, enabled ? "ON" : "OFF");
+            }
         }
 
         private void OnGraphUnitChanged(string unitName)

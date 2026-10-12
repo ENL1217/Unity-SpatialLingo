@@ -115,6 +115,14 @@ namespace SpatialLingo.AI
         public delegate void ImageSummaryCompleteEvent(ImageSummaryResult result);
         public event ImageSummaryCompleteEvent CollectImageSummaryComplete;
 
+        public delegate void TranscriptEvaluationCompleteEvent(WordCloudTranscriptPhraseResult result);
+
+        /// <summary>
+        /// Raised for every spoken answer the model judges, so the lesson debug panel can show
+        /// what was sent and how it was read back.
+        /// </summary>
+        public event TranscriptEvaluationCompleteEvent EvaluateTranscriptionComplete;
+
         public delegate void DialogueCompleteEvent(DialogueResult result);
         public event DialogueCompleteEvent GenerateDialogueComplete;
 
@@ -417,6 +425,7 @@ namespace SpatialLingo.AI
             _ = request.Append($" Each object should consist of the keys \"Language\" and \"Adjectives\" and \"Verbs\" and \"Word\". Only include a single best response without any additional commentary.");
 
             string responseText = null;
+            MetaModelRestApi.ModelUsage usage = null;
             if (imageString != null)
             {
                 var list = new string[] { imageString };
@@ -425,6 +434,7 @@ namespace SpatialLingo.AI
                 if (response != null)
                 {
                     responseText = PrepareJsonStringForParsing(response.Message);
+                    usage = response.Usage;
                 }
             }
             else
@@ -435,6 +445,7 @@ namespace SpatialLingo.AI
                 if (response != null)
                 {
                     responseText = PrepareJsonStringForParsing(response.Message.Text);
+                    usage = response.Usage;
                 }
             }
 
@@ -448,7 +459,10 @@ namespace SpatialLingo.AI
                 Debug.LogWarning($"GenerateSpeechExamplesForWordCloud - Unable to parse JSON: {responseText}\n{e.Message}");
             }
 
-            var result = new WordCloudResult(userLanguage, targetLanguage, classification, cloud, context);
+            var result = new WordCloudResult(userLanguage, targetLanguage, classification, cloud, context)
+            {
+                Stats = usage,
+            };
             return result;
         }
 
@@ -507,7 +521,10 @@ namespace SpatialLingo.AI
                 phrases.Phrase0 = word;
             }
 
-            var result = new WordCloudPhraseResult(targetLanguage, phrases, context);
+            var result = new WordCloudPhraseResult(targetLanguage, phrases, context)
+            {
+                Stats = response?.Usage,
+            };
             return result;
         }
 
@@ -629,7 +646,11 @@ namespace SpatialLingo.AI
                 }
             }
 
-            var result = new WordCloudTranscriptPhraseResult(spokenLanguage, transcript, nouns, adjectives, verbs, answer, reason, context);
+            var result = new WordCloudTranscriptPhraseResult(spokenLanguage, transcript, nouns, adjectives, verbs, answer, reason, context)
+            {
+                Stats = response?.Usage,
+            };
+            EvaluateTranscriptionComplete?.Invoke(result);
             return result;
         }
 

@@ -9,6 +9,7 @@ using SpatialLingo.AI;
 using SpatialLingo.AppSystems;
 using SpatialLingo.Audio;
 using SpatialLingo.Characters;
+using SpatialLingo.Debugging;
 using SpatialLingo.SceneObjects;
 using SpatialLingo.SpeechAndText;
 using UnityEngine;
@@ -122,6 +123,10 @@ namespace SpatialLingo.Lessons
             m_transcriber.VoiceTranscriptionUpdateComplete += OnVoiceTranscriptionUpdateComplete;
             m_transcriber.VoiceTranscriptionUpdateIncomplete += OnVoiceTranscriptionUpdateIncomplete;
             m_transcriber.VoiceTranscriptionVolumeUpdate += OnVoiceTranscriptionUpdateVolume;
+
+            // The debug readout under the mic listens to the assistant directly, so it reports
+            // every evaluation - including the stale ones discarded below.
+            m_feedbackController.DebugPanel?.Bind(m_assistantAI);
 
             // Start following UI immediately for possible UI updates at any state
             m_feedbackController.StartFollowingTransform(m_centerEyeAnchor);
@@ -392,6 +397,8 @@ namespace SpatialLingo.Lessons
                 m_lessonManager.RemoveLesson(interactor.Lesson, fadeOut);
             }
             m_activeUntrackedLessonList.Clear();
+            // Nothing is in play any more, so the originals should stop reading "IN LESSON".
+            ScanDebugRegistry.ClearAllDispatched();
         }
 
         private void OnLessonActivated(Lesson3DInteractor interactor)
@@ -531,6 +538,11 @@ namespace SpatialLingo.Lessons
         {
             // Only want one of these evaluations at a time - if one is already running, need to ignore previous result:
             m_currentTranscriptionEvaluationID = AssistantAI.ContextReferenceOrDefault();
+            m_feedbackController.DebugPanel?.ReportRequestSent(transcription);
+
+            var label = m_activeLessonInteractor?.Lesson?.Activity?.DebugLabel ?? "lesson";
+            var action = DebugActionLog.Begin(DebugActionKind.Lesson, label, "speech");
+
             var response = await m_assistantAI.EvaluateTranscriptionForWordCloud(
                 AppSessionData.TargetLanguageAI, AppSessionData.UserLanguageAI, transcription, words.Nouns, words.Adjectives, words.Verbs,
                 m_currentTranscriptionEvaluationID);
@@ -540,12 +552,29 @@ namespace SpatialLingo.Lessons
             {
                 if (response.IsPassing && m_activeLessonInteractor != null)
                 {
+                    DebugActionLog.Complete(action, DebugActionStatus.Success);
                     OnAttemptSuccessLesson();
                 }
                 else
                 {
+                    // A pass with no interactor left is still a miss for the player, but it is a
+                    // different thing from the model rejecting the answer.
+                    var lostLesson = response.IsPassing && m_activeLessonInteractor == null;
+                    DebugActionLog.Complete(
+                        action,
+                        lostLesson ? DebugActionStatus.Interrupted : DebugActionStatus.Failed,
+                        lostLesson ? "passed but lesson ended" : response.FailReason);
                     OnAttemptFailLesson(response.FailReason);
                 }
+            }
+            else
+            {
+                // Either no response at all, or the player spoke again and a newer evaluation
+                // took over - this one's answer is thrown away either way.
+                DebugActionLog.Complete(
+                    action,
+                    response == null ? DebugActionStatus.Failed : DebugActionStatus.Interrupted,
+                    response == null ? "no response" : "superseded by a newer answer");
             }
         }
 

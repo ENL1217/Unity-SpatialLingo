@@ -8,6 +8,7 @@ using Meta.Utilities.ObjectClassifier;
 using Meta.XR.Samples;
 using SpatialLingo.AI;
 using SpatialLingo.AppSystems;
+using SpatialLingo.Debugging;
 using UnityEngine;
 
 namespace SpatialLingo.Lessons
@@ -70,6 +71,9 @@ namespace SpatialLingo.Lessons
         private bool m_didRequestResetActivities = false;
         private bool m_isTaxonTracking = false;
         private FaceDetection m_faceBlur;
+
+        // Numbers objects for debug readouts. Static so ids stay unique across a manager rebuild.
+        private static int s_nextDebugId;
 
         // Start is called once before the first execution of Update after the MonoBehaviour is created
 
@@ -167,6 +171,7 @@ namespace SpatialLingo.Lessons
             var imageSize = context.Size;
             var activity = new Activity
             {
+                DebugId = ++s_nextDebugId,
                 Classification = classification,
                 ContextImage = image,
                 ContextImageExtent = imageSize
@@ -175,6 +180,8 @@ namespace SpatialLingo.Lessons
             var lesson = new Lesson(activity, taxon);
             m_activities.Add(lesson, activity);
             m_lessons.Add(taxon, lesson);
+            _ = ScanDebugRegistry.Track(lesson);
+            RefreshDebugQueuePositions();
 
             // Lesson may already be ready
             if (lesson.IsReady)
@@ -230,6 +237,8 @@ namespace SpatialLingo.Lessons
                 }
 
                 _ = m_lessons.Remove(taxon);
+                ScanDebugRegistry.Untrack(lesson);
+                RefreshDebugQueuePositions();
                 LessonRemoved?.Invoke(new LessonUpdateResult(lesson));
                 LessonTrackingChanged?.Invoke();
             }
@@ -344,7 +353,75 @@ namespace SpatialLingo.Lessons
                 chosenList.RemoveAt(0);
             }
 
-            return chosenList.ToArray();
+            var chosen = chosenList.ToArray();
+            ReportSelectionDecisions(existingLessons, chosen, minimumDistanceRestriction);
+            return chosen;
+        }
+
+        /// <summary>
+        /// Record on the scan overlay why each ready lesson was or was not picked. Runs after the
+        /// selection and only reads its result, so it cannot change which lessons are chosen. The
+        /// reasons mirror the rules above: confidence, repeated classification, then distance.
+        /// </summary>
+        private void ReportSelectionDecisions(List<Lesson> existingLessons, Lesson[] chosen, float minimumDistanceRestriction)
+        {
+            if (!SpatialLingoDebug.Enabled)
+            {
+                return;
+            }
+
+            var taken = new List<Lesson>(existingLessons);
+            taken.AddRange(chosen);
+            foreach (var pair in m_lessons)
+            {
+                var lesson = pair.Value;
+                if (!lesson.IsReady)
+                {
+                    continue;
+                }
+
+                var info = ScanDebugRegistry.Find(lesson);
+                // A dispatched original is represented in play by its untracked copy, so it would
+                // read as a duplicate of itself. The card already shows it as in a lesson.
+                if (info == null || info.IsDispatched)
+                {
+                    continue;
+                }
+
+                var isChosen = Array.IndexOf(chosen, lesson) >= 0;
+                var reason = isChosen ? string.Empty : RejectionReason(lesson, taken, minimumDistanceRestriction);
+                ScanDebugRegistry.Update(lesson, candidate =>
+                {
+                    candidate.Decision = isChosen ? ScanDecision.Selected : ScanDecision.Rejected;
+                    candidate.DecisionReason = reason;
+                });
+            }
+        }
+
+        private static string RejectionReason(Lesson lesson, List<Lesson> taken, float minimumDistanceRestriction)
+        {
+            if (lesson.Confidence <= 0)
+            {
+                return "low confidence";
+            }
+
+            foreach (var other in taken)
+            {
+                if (other.Classification == lesson.Classification)
+                {
+                    return "duplicate classification";
+                }
+            }
+
+            foreach (var other in taken)
+            {
+                if (Vector3.Distance(other.Position, lesson.Position) < minimumDistanceRestriction)
+                {
+                    return "too close to another lesson";
+                }
+            }
+
+            return "enough lessons already";
         }
 
         private Lesson FindFurthestLesson(List<Lesson> existing, List<Lesson> potential, float minimumDistanceRestriction)
@@ -499,6 +576,61 @@ namespace SpatialLingo.Lessons
             }
         }
 
+        /// <summary>
+        /// Apply a change to the scan overlay entry of every lesson backed by this activity.
+        /// </summary>
+        private void UpdateDebugFor(Activity activity, Action<ScanCandidateDebugInfo> mutate)
+        {
+            if (activity == null || !SpatialLingoDebug.Enabled)
+            {
+                return;
+            }
+
+            foreach (var pair in m_activities)
+            {
+                if (pair.Value == activity)
+                {
+                    ScanDebugRegistry.Update(pair.Key, mutate);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Number the waiting objects in the order CheckGetActivityComponents will take them:
+        /// objects not yet completed first, then the rest, each in the order they were added.
+        /// Read-only - it mirrors the pick, it does not drive it, so keep the two in step.
+        /// </summary>
+        private void RefreshDebugQueuePositions()
+        {
+            if (!SpatialLingoDebug.Enabled)
+            {
+                return;
+            }
+
+            var queue = new List<Lesson>();
+            foreach (var pass in new[] { false, true })
+            {
+                foreach (var pair in m_activities)
+                {
+                    var activity = pair.Value;
+                    if (!activity.IsReady && activity != m_processingActivity && activity.HasCompleted == pass)
+                    {
+                        queue.Add(pair.Key);
+                    }
+                }
+            }
+
+            foreach (var pair in m_activities)
+            {
+                var position = queue.IndexOf(pair.Key) + 1;
+                ScanDebugRegistry.Update(pair.Key, info =>
+                {
+                    info.QueuePosition = position;
+                    info.QueueLength = position > 0 ? queue.Count : 0;
+                });
+            }
+        }
+
         private void ResetActivities()
         {
             var previousLessons = new List<Lesson>();
@@ -520,6 +652,12 @@ namespace SpatialLingo.Lessons
                     }
                 }
                 activity.Reset();
+                UpdateDebugFor(activity, info =>
+                {
+                    info.State = ScanCandidateState.Pending;
+                    info.Decision = ScanDecision.None;
+                    info.DecisionReason = string.Empty;
+                });
                 foreach (var lesson in previousLessons)
                 {
                     LessonRemoved?.Invoke(new LessonUpdateResult(lesson));
@@ -583,8 +721,19 @@ namespace SpatialLingo.Lessons
                 }
             }
 
+            var acquired = m_processingActivity != null && m_processingActivity.IsAcquisitionComplete;
+            var discardReason = m_didRequestResetActivities ? "reset before use" : "result not usable, will retry";
+            UpdateDebugFor(m_processingActivity, info =>
+            {
+                info.State = acquired ? ScanCandidateState.Ready : ScanCandidateState.Pending;
+                info.IsProcessing = false;
+                info.StageLabel = string.Empty;
+                info.FailureReason = acquired ? string.Empty : discardReason;
+            });
+
             ResetCheckActivityComponents();
             CheckGetActivityComponents();
+            RefreshDebugQueuePositions();
         }
         private void ResetCheckActivityComponents()
         {
@@ -599,12 +748,19 @@ namespace SpatialLingo.Lessons
         /// Error could be underlying endpoint or WIFI in general 
         /// </summary>
         /// <param name="task">Task to perform</param>
+        /// <param name="stageName">Step name for the debug activity panel</param>
         /// <returns>true if success, false otherwise</returns>
-        private async Awaitable<bool> RetryActivitySubTaskForSuccess(Func<Awaitable<bool>> task)
+        private async Awaitable<bool> RetryActivitySubTaskForSuccess(Func<Awaitable<bool>> task, string stageName)
         {
+            // One panel row per sub-task, spanning its retries: that is the unit the app actually
+            // waits on, and a row that sits at "..." for a minute is the thing worth seeing.
+            var action = DebugActionLog.Begin(DebugActionKind.Discovery, m_processingActivity?.DebugLabel, stageName);
             var endpointRetryAttempts = 0;
             while (endpointRetryAttempts < ENDPOINT_MAX_RETRY_COUNT)
             {
+                var attempt = endpointRetryAttempts;
+                UpdateDebugFor(m_processingActivity, info =>
+                    info.StageLabel = attempt == 0 ? stageName : $"{stageName} retry {attempt}/{ENDPOINT_MAX_RETRY_COUNT}");
                 var resultSuccess = await ExecuteTask();
                 if (!resultSuccess)
                 {
@@ -614,9 +770,18 @@ namespace SpatialLingo.Lessons
                     continue;
                 }
 
+                DebugActionLog.Complete(action, DebugActionStatus.Success);
                 return true;
             }
 
+            DebugActionLog.Complete(action, DebugActionStatus.Failed, $"gave up after {ENDPOINT_MAX_RETRY_COUNT} attempts");
+            UpdateDebugFor(m_processingActivity, info =>
+            {
+                info.State = ScanCandidateState.Failed;
+                info.IsProcessing = false;
+                info.StageLabel = string.Empty;
+                info.FailureReason = $"{stageName} failed x{ENDPOINT_MAX_RETRY_COUNT}";
+            });
             Debug.LogWarning("LessonsManager - failed subtask, resetting activity");
             if (m_processingActivity != null)
             {
@@ -777,6 +942,7 @@ namespace SpatialLingo.Lessons
                 imageString = await AssistantAI.GetNetworkSafeImageString(image, m_faceBlur);
             }
             var result = await m_assistant.GenerateWordCloudData(m_userLanguage, m_targetLanguage, m_processingActivity.Classification, imageString, m_processingRequestID);
+            UpdateDebugFor(m_processingActivity, info => info.AddUsage(result.Stats));
             if (result.Wordcloud == null || result.Wordcloud.Wordclouds == null || result.Wordcloud.Wordclouds.Length == 0)
             {
                 Debug.LogWarning($"ActivitySubTaskGetWordCloudData - result fail: {result}");
@@ -810,6 +976,7 @@ namespace SpatialLingo.Lessons
             var verbs = m_processingActivity.VerbsTargetLanguage;
             var adjectives = m_processingActivity.AdjectivesTargetLanguage;
             var result = await m_assistant.GenerateSpeechExamplesForWordCloud(m_targetLanguage, word, verbs, adjectives, m_processingRequestID);
+            UpdateDebugFor(m_processingActivity, info => info.AddUsage(result.Stats));
 
             var phrases = result.Phrases;
 
@@ -839,14 +1006,21 @@ namespace SpatialLingo.Lessons
             m_processingRequestID = Guid.NewGuid().ToString();
             m_processingActivity.EnglishWord = m_processingActivity.Classification;
             var classification = m_processingActivity.Classification;
+            UpdateDebugFor(activity, info =>
+            {
+                info.State = ScanCandidateState.Acquiring;
+                info.IsProcessing = true;
+                info.FailureReason = string.Empty;
+            });
+            RefreshDebugQueuePositions();
 
-            if (!await RetryActivitySubTaskForSuccess(ActivitySubTaskGetWordCloudData))
+            if (!await RetryActivitySubTaskForSuccess(ActivitySubTaskGetWordCloudData, "wordcloud"))
             {
                 Debug.LogWarning($"LessonsManager - failed subtask ActivitySubTaskGetPartsOfSpeech for: {classification}");
                 return;
             }
 
-            if (!await RetryActivitySubTaskForSuccess(ActivitySubTaskTargetLanguagePhrases))
+            if (!await RetryActivitySubTaskForSuccess(ActivitySubTaskTargetLanguagePhrases, "phrases"))
             {
                 Debug.LogWarning($"LessonsManager - failed subtask ActivitySubTaskTargetLanguageSentence for: {classification}");
                 return;
@@ -926,6 +1100,34 @@ namespace SpatialLingo.Lessons
 
         public float Confidence => m_taxon != null ? m_taxon.Reliability : 1.0f;
 
+        /// <summary>
+        /// Furthest depth-ray hit from the derived centre, in metres, for the scan debug overlay.
+        /// Builds the point list on every call, so it is meant for debug readouts only.
+        /// </summary>
+        public float SampleSpread
+        {
+            get
+            {
+                var points = SamplePoints;
+                if (points == null)
+                {
+                    return 0.0f;
+                }
+
+                var center = Position;
+                var worst = 0.0f;
+                foreach (var (point, _) in points)
+                {
+                    worst = Mathf.Max(worst, Vector3.Distance(point, center));
+                }
+
+                return worst;
+            }
+        }
+
+        /// <summary>How many depth-ray hits the position was averaged from, for debug readouts.</summary>
+        public int SamplePointCount => SamplePoints?.Count ?? 0;
+
         public ImageSampleContext BestImageForView(Transform transform)
         {
             if (m_taxon != null)
@@ -984,10 +1186,21 @@ namespace SpatialLingo.Lessons
         public Texture2D ContextImage; // Some representative image from the list
         public Vector2 ContextImageExtent; // 3D approximation of image 2D size
 
+        /// <summary>
+        /// Short stable number for debug readouts, so "mouse" detected eight times reads as
+        /// mouse#3 rather than eight identical rows. Copied to untracked copies so a dispatched
+        /// lesson keeps the identity it had during discovery.
+        /// </summary>
+        public int DebugId;
+
+        /// <summary>Name plus id, as shown on the debug activity panel.</summary>
+        public string DebugLabel => $"{Classification}#{DebugId}";
+
         public Activity UntrackedCopy()
         {
             var activity = new Activity
             {
+                DebugId = DebugId,
                 Classification = Classification,
                 EnglishWord = EnglishWord,
                 ExamplePhrases = ExamplePhrases,

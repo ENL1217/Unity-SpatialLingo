@@ -279,6 +279,10 @@ namespace SpatialLingo.Lessons
         public Lesson3DInteractor CreateUntrackedCopy(Lesson3DInteractor original)
         {
             var newLesson = original.Lesson.UntrackedCopy();
+            // The copy is what the player interacts with, and the debug registry only knows the
+            // original. Mark it here or the next selection pass reports the original as a
+            // duplicate of the copy that replaced it.
+            Debugging.ScanDebugRegistry.Update(original.Lesson, info => info.IsDispatched = true);
             var newInteractor = InstantiatePrefabForNewLesson(newLesson);
             return newInteractor;
         }

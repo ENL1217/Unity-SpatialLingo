@@ -1,5 +1,6 @@
 ﻿// Copyright (c) Meta Platforms, Inc. and affiliates.
 
+using Meta.Utilities.MetaModelAPI;
 using Meta.XR.Samples;
 
 namespace SpatialLingo.AI
@@ -8,6 +9,13 @@ namespace SpatialLingo.AI
     public class WordCloudTranscriptPhraseResult
     {
         public string ContextID;
+
+        /// <summary>
+        /// Metrics for the model request behind this result: tokens, round trip, model and
+        /// finish reason. Null when the request failed and there was no response to report on.
+        /// </summary>
+        public MetaModelRestApi.ModelUsage Stats;
+
         public readonly AssistantAI.SupportedLanguage TargetLanguage;
         public readonly string Transcript;
         public readonly string[] Nouns;
