@@ -70,6 +70,20 @@ namespace SpatialLingo.Lessons
             m_lessonsManager.SetTargetLanguage(targetLanguage);
         }
 
+        /// <summary>
+        /// Hold off acquiring more objects while the user is answering. Acquisition and speech
+        /// validation share one HttpClient and one main thread.
+        /// </summary>
+        public void SuspendAcquisition()
+        {
+            m_lessonsManager.SuspendAcquisition();
+        }
+
+        public void ResumeAcquisition()
+        {
+            m_lessonsManager.ResumeAcquisition();
+        }
+
         private void OnLessonAdded(LessonUpdateResult result)
         {
             if (m_lessons.TryGetValue(result.Lesson, out var interactor))

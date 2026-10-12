@@ -18,7 +18,13 @@ namespace Meta.Utilities.CameraTaxonTracking
         public Vector3[] Points;
         public Vector3 Up;
 
-        public TrackSample(Vector3 normal, Vector3 up, Vector3[] points, bool[] edges, Texture2D cameraImage, Vector3 cameraCenter)
+        /// <summary>
+        /// Width over height of the crop, recorded when the sample is made so the size estimate
+        /// still works after the crop texture has been released.
+        /// </summary>
+        public float ImageAspect;
+
+        public TrackSample(Vector3 normal, Vector3 up, Vector3[] points, bool[] edges, Texture2D cameraImage, Vector3 cameraCenter, float imageAspect = 0.0f)
         {
             Normal = normal;
             Up = up;
@@ -26,6 +32,9 @@ namespace Meta.Utilities.CameraTaxonTracking
             IsEdges = edges;
             CameraImage = cameraImage;
             CameraPosition = cameraCenter;
+            ImageAspect = cameraImage != null && cameraImage.height > 0
+                ? (float)cameraImage.width / cameraImage.height
+                : imageAspect > 0.0f ? imageAspect : 1.0f;
             Timestamp = DateTime.Now;
         }
 
@@ -50,10 +59,34 @@ namespace Meta.Utilities.CameraTaxonTracking
         public const float MINIMUM_EXTENT = 0.05f; // 5 cm
         public const int MAXIMUM_SAMPLE_COUNT = 10; // Throw away oldest values at this point
         public const int MAX_MISS_COUNT_FOR_REMOVAL = 5; // Should have been visible but was not allowance
-        public const float MAXIMUM_TIMESTAMP_EXIST_SECONDS = 300.0f; // 5 Miniutes - After this time, considered stale
         public const float MAXIMUM_ANGLE_VISIBILITY_DEGREES = 35.0f; // Forgiving / narrow fov estimate
         public const float MINIMUM_DISTANCE_VISIBILITY = 0.50f; // Not too close
         public const float MAXIMUM_DISTANCE_VISIBILITY = 2.0f; // Not too far
+
+        // Reliability floor for anything still being tracked. Never zero: reliability says how
+        // well we know the object is there, not whether it is worth teaching - the AI decides
+        // that when it evaluates the object, and it cannot do so for something already discarded.
+        public const float MINIMUM_RELIABILITY = 0.1f;
+
+        // What one miss costs, expressed in sightings. A miss erodes trust but must not erase an
+        // object that has been seen repeatedly: the detector blinks often enough that consecutive
+        // sightings of the same object are the exception, not the rule.
+        public const int MISS_PENALTY_IN_SIGHTINGS = 2;
+
+        // Reliability at which the position becomes eligible to be committed. Eligibility is not
+        // enough on its own - see POSITION_LOCK_AGREEMENT_COUNT.
+        public const float POSITION_LOCK_RELIABILITY = 0.5f;
+
+        // Committing needs the estimate to have stopped moving, not just enough sightings. A
+        // sighting count alone freezes an object on its sparsest evidence and then ignores every
+        // ray hit that follows, leaving the lesson off-centre. Require this many consecutive
+        // sightings to agree first.
+        public const int POSITION_LOCK_AGREEMENT_COUNT = 3;
+
+        // How far consecutive sightings may differ and still count as agreeing. Scales with the
+        // object, so a keyboard is allowed more wander than a mouse, with a floor for small items.
+        public const float POSITION_LOCK_AGREEMENT_FACTOR = 0.25f;
+        public const float POSITION_LOCK_AGREEMENT_MINIMUM = 0.10f;
 
         // Source values
         private readonly List<TrackSample> m_surfaceSamples = new();
@@ -73,21 +106,48 @@ namespace Meta.Utilities.CameraTaxonTracking
         private int m_observeCount = 0; // As object is re-observed increase this by 1
         private int m_missedCount = 0; // As object is expected but not seen increase this by 1
 
+        // Consecutive sightings whose own centre landed close to the previous one. The position
+        // is only committed once the estimate has demonstrably settled.
+        private int m_stableCenterCount;
+        private Vector3 m_previousSightingCenter;
+        private bool m_hasPreviousSightingCenter;
+
+        /// <summary>
+        /// True once the object has been seen reliably and its sightings agree, after which its
+        /// position is frozen: Center and Extent stop moving, so a lesson placed here stays put
+        /// and a later stray depth hit cannot drag it.
+        /// </summary>
+        public bool IsPositionLocked { get; private set; }
+
         public Vector3 Center { get; private set; }
 
         public string Name => Taxa;
 
         public Vector3 Extent { get; private set; }
 
+        /// <summary>
+        /// A detached copy for a lesson that leaves tracking. Its crops are duplicates owned by
+        /// the copy: this taxon destroys its own as they are pruned, so sharing them would leave
+        /// the copy pointing at destroyed textures. Whoever holds the copy must call
+        /// <see cref="ReleaseImages"/> when done with it.
+        /// </summary>
         public CameraTrackedTaxon UntrackedCopy()
         {
             var samples = new List<TrackSample>();
             foreach (var sample in m_surfaceSamples)
             {
-                var copy = new TrackSample(sample.Normal, sample.Up, sample.Points, sample.IsEdges, sample.CameraImage, sample.CameraPosition);
+                var copy = new TrackSample(sample.Normal, sample.Up, sample.Points, sample.IsEdges, CopyTexture(sample.CameraImage), sample.CameraPosition, sample.ImageAspect);
                 samples.Add(copy);
             }
             var taxon = new CameraTrackedTaxon(Taxa, samples.ToArray());
+
+            // Carry the committed place across, rather than letting the copy re-derive it from
+            // the samples and land somewhere slightly different.
+            if (IsPositionLocked)
+            {
+                taxon.LockPositionAt(Center, Extent);
+            }
+
             return taxon;
         }
 
@@ -106,11 +166,16 @@ namespace Meta.Utilities.CameraTaxonTracking
             }
         }
 
+        /// <summary>
+        /// When this object was last actually seen: the newest sample's timestamp, or
+        /// DateTime.MinValue when it has none. Starts from the minimum rather than from now,
+        /// since every sample is in the past and starting from now would always report now.
+        /// </summary>
         public DateTime NewestTimestamp
         {
             get
             {
-                var timestamp = DateTime.Now;
+                var timestamp = DateTime.MinValue;
                 foreach (var sample in m_surfaceSamples)
                 {
                     var stamp = sample.Timestamp;
@@ -155,31 +220,28 @@ namespace Meta.Utilities.CameraTaxonTracking
             }
         }
 
-        public float Reliability // Value in [0,1] for overall reliability / confidence of lesson
+        /// <summary>
+        /// How well this object's presence and position are known, in [MINIMUM_RELIABILITY, 1].
+        ///
+        /// Sightings accumulate and misses erode, rather than a miss wiping the total. The old
+        /// behaviour reset the sighting count on any miss and returned exactly zero after two,
+        /// which made a well-established object unusable the moment the detector blinked twice -
+        /// and zero meant the selection pass dropped it even though it was still tracked and had
+        /// already been paid for.
+        /// </summary>
+        public float Reliability
         {
             get
             {
-                if (m_missedCount > 1)
+                var effective = m_observeCount - m_missedCount * MISS_PENALTY_IN_SIGHTINGS;
+                if (effective <= 0)
                 {
-                    return 0.0f;
+                    // Seen at least once, but not yet proven. Still a candidate.
+                    return MINIMUM_RELIABILITY;
                 }
 
-                if (m_missedCount <= 1 && m_observeCount == 0)
-                {
-                    return 0.1f;
-                }
-
-                if (m_observeCount == 0)
-                {
-                    return 0.2f;
-                }
-
-                if (m_observeCount == 1)
-                {
-                    return 0.3f;
-                }
-
-                return 1.0f - 1.0f / m_observeCount; // 2 = 0.5, 3 = 0.66, 4 = 0.75, ...
+                // 1 = 0.50, 2 = 0.67, 3 = 0.75, 4 = 0.80 ...
+                return Mathf.Clamp(1.0f - 1.0f / (1.0f + effective), MINIMUM_RELIABILITY, 1.0f);
             }
         }
 
@@ -192,8 +254,6 @@ namespace Meta.Utilities.CameraTaxonTracking
                 var points = sample.Points.Length;
                 pointCountTotal += points;
             }
-            var mostRecentTimestamp = NewestTimestamp;
-            var timeDifference = DateTime.Now - mostRecentTimestamp;
 
             // Not enough points to approximate center & extent
             if (pointCountTotal < MINIMUM_POINT_COUNT_KEEP)
@@ -201,11 +261,9 @@ namespace Meta.Utilities.CameraTaxonTracking
                 return true;
             }
 
-            // Most recent observation is stale
-            if (timeDifference.TotalSeconds > MAXIMUM_TIMESTAMP_EXIST_SECONDS)
-            {
-                return true;
-            }
+            // Time since the last sighting is not a reason to remove an object on its own: one
+            // that is out of view is simply not being seen, and it only counts as missed when it
+            // should have been visible (m_missedCount below).
 
             // Should have seen & missed too many times
             if (m_missedCount > MAX_MISS_COUNT_FOR_REMOVAL)
@@ -243,12 +301,23 @@ namespace Meta.Utilities.CameraTaxonTracking
             {
                 m_observeCount += 1;
                 m_missedCount = 0;
+
+                // Seen enough times AND settled in one place before committing. Reliability
+                // alone says the object keeps being recognised; it says nothing about whether the
+                // depth estimate has stopped wandering.
+                if (!IsPositionLocked
+                    && Reliability >= POSITION_LOCK_RELIABILITY
+                    && m_stableCenterCount >= POSITION_LOCK_AGREEMENT_COUNT)
+                {
+                    IsPositionLocked = true;
+                }
                 // If object was not seen but clearly should have been:
             }
             else if (ShouldBeVisible(cameraCenter, cameraDirection))
             {
+                // Deliberately does not reset m_observeCount: a blink from the detector should
+                // cost trust, not erase everything the object has earned.
                 m_missedCount += 1;
-                m_observeCount = 0;
             }
             // Else: gray area, eg: maybe not clearly visible => no action
         }
@@ -264,9 +333,16 @@ namespace Meta.Utilities.CameraTaxonTracking
             return false;
         }
 
+        /// <summary>
+        /// The sample best facing the given transform, with its orientation and estimated size.
+        /// Image is null once the crops have been released; the geometry is still valid.
+        /// Returns null only when there are no samples.
+        /// </summary>
         public ImageSampleContext GetRepresentativeImage(Transform transform)
         {
             Texture2D bestImage = null;
+            var bestAspect = 1.0f;
+            var found = false;
             var bestNormal = new Vector3();
             var bestUp = new Vector3();
             var bestAngle = -1.0f;
@@ -283,7 +359,7 @@ namespace Meta.Utilities.CameraTaxonTracking
                     }
                 }
 
-                if (bestImage == null || edgeCount <= fewestEdges)
+                if (!found || edgeCount <= fewestEdges)
                 {
                     var keep = false;
                     if (transform != null)
@@ -302,8 +378,10 @@ namespace Meta.Utilities.CameraTaxonTracking
 
                     if (keep)
                     {
+                        found = true;
                         fewestEdges = edgeCount;
                         bestImage = sample.CameraImage;
+                        bestAspect = sample.ImageAspect;
                         bestNormal = sample.Normal;
                         bestUp = sample.Up;
                     }
@@ -311,7 +389,7 @@ namespace Meta.Utilities.CameraTaxonTracking
             }
 
             // can get the SIZE from estimated extents in directions orthogonal to normal
-            if (bestImage == null)
+            if (!found)
             {
                 return null;
             }
@@ -356,7 +434,7 @@ namespace Meta.Utilities.CameraTaxonTracking
             dotSumUp /= pointCount;
             dotSumRight /= pointCount;
 
-            var widthOverHeight = (float)bestImage.width / bestImage.height;
+            var widthOverHeight = bestAspect;
             var averageY = dotSumUp;
             var averageX = dotSumRight;
             // Preserve aspect ratio by averaging 2 size estimates
@@ -384,8 +462,12 @@ namespace Meta.Utilities.CameraTaxonTracking
         // Extents are boundary points in 3D that are derived from the planar projection of the image in 2D 
         public void AddSamples(TrackSample[] samples)
         {
+            // Stability is judged per sighting, not on the running average. Averaging damps the
+            // noise: a depth estimate swinging over 40cm still produces a mean that barely moves,
+            // so the mean looks settled while the underlying readings are nowhere near agreeing.
             foreach (var sample in samples)
             {
+                NoteSampleAgreement(sample);
                 m_surfaceSamples.Add(sample);
             }
 
@@ -395,10 +477,105 @@ namespace Meta.Utilities.CameraTaxonTracking
             // Samples could also include direction prioritization here (for maximizing surface coverage)
             while (m_surfaceSamples.Count > MAXIMUM_SAMPLE_COUNT)
             {
+                // The crop is a texture this taxon owns; dropping the sample without destroying
+                // it leaks native memory with every detection past the cap.
+                ReleaseImage(m_surfaceSamples[0], null);
                 m_surfaceSamples.RemoveAt(0);
             }
 
             CalculateDerived();
+        }
+
+        /// <summary>
+        /// Set by a listener that keeps using this taxon after the tracker drops it - a pinned
+        /// lesson, whose activation effect still picks the crop best facing the player. The
+        /// tracker then leaves the crops alone, and the listener releases them when done.
+        /// </summary>
+        public bool KeepImagesAfterRemoval { get; set; }
+
+        /// <summary>
+        /// Destroy the crops this taxon holds. Textures in <paramref name="keep"/> are left alone -
+        /// after a merge, a dropped taxon still points at samples the surviving one now owns.
+        /// </summary>
+        public void ReleaseImages(ICollection<Texture2D> keep = null)
+        {
+            foreach (var sample in m_surfaceSamples)
+            {
+                ReleaseImage(sample, keep);
+            }
+        }
+
+        /// <summary>Every crop this taxon still holds.</summary>
+        public IEnumerable<Texture2D> HeldImages
+        {
+            get
+            {
+                foreach (var sample in m_surfaceSamples)
+                {
+                    if (sample.CameraImage != null)
+                    {
+                        yield return sample.CameraImage;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether this taxon holds any of the other's samples. That is what a merge leaves behind,
+        /// since <see cref="MergeInto"/> moves the merged-away taxon's samples into the survivor, so
+        /// it tells a real collision apart from a separate track that merely sits nearby.
+        /// </summary>
+        public bool SharesSamplesWith(CameraTrackedTaxon other)
+        {
+            if (other == null || other == this)
+            {
+                return false;
+            }
+
+            foreach (var sample in other.m_surfaceSamples)
+            {
+                if (m_surfaceSamples.Contains(sample))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void ReleaseImage(TrackSample sample, ICollection<Texture2D> keep)
+        {
+            if (sample.CameraImage == null || (keep != null && keep.Contains(sample.CameraImage)))
+            {
+                return;
+            }
+
+            DestroyTexture(sample.CameraImage);
+            sample.CameraImage = null;
+        }
+
+        /// <summary>An independent copy of a crop, owned by the caller. Null in, null out.</summary>
+        public static Texture2D CopyTexture(Texture2D texture)
+        {
+            return texture != null ? UnityEngine.Object.Instantiate(texture) : null;
+        }
+
+        /// <summary>Destroy a crop texture; DestroyImmediate outside play mode, where Destroy is not allowed.</summary>
+        public static void DestroyTexture(Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(texture);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
         }
 
         public void SetSamples(TrackSample[] samples)
@@ -545,8 +722,65 @@ namespace Meta.Utilities.CameraTaxonTracking
             derivedExtents.x = Mathf.Max(derivedExtents.x, MINIMUM_EXTENT);
             derivedExtents.y = Mathf.Max(derivedExtents.y, MINIMUM_EXTENT);
             derivedExtents.z = Mathf.Max(derivedExtents.z, MINIMUM_EXTENT);
+
+            // Once the position is committed it stops moving. The centre is a mean of depth-ray
+            // hits, so a stray hit on background geometry can otherwise shift a trusted object by
+            // half a metre - which is how the same mouse ended up on the desk and on the floor.
+            if (IsPositionLocked)
+            {
+                return;
+            }
+
             Center = averageCenter;
             Extent = derivedExtents;
+        }
+
+        /// <summary>
+        /// Track whether successive sightings are landing in the same place.
+        ///
+        /// Each sighting's own centroid is compared with the one before it. Consecutive agreement
+        /// means the depth estimate has settled; a single disagreement resets the run, so an
+        /// object whose readings keep jumping never becomes eligible to commit.
+        /// </summary>
+        private void NoteSampleAgreement(TrackSample sample)
+        {
+            if (sample?.Points == null || sample.Points.Length == 0)
+            {
+                return;
+            }
+
+            var centroid = Vector3.zero;
+            foreach (var point in sample.Points)
+            {
+                centroid += point;
+            }
+
+            centroid /= sample.Points.Length;
+
+            // Scaled by this sighting's own footprint, so a keyboard gets more latitude than a
+            // mouse, with a floor so small objects are not held to sub-centimetre agreement.
+            var span = 0.0f;
+            foreach (var point in sample.Points)
+            {
+                span = Mathf.Max(span, Vector3.Distance(point, centroid));
+            }
+
+            var tolerance = Mathf.Max(span * POSITION_LOCK_AGREEMENT_FACTOR, POSITION_LOCK_AGREEMENT_MINIMUM);
+            m_stableCenterCount = m_hasPreviousSightingCenter
+                                  && Vector3.Distance(m_previousSightingCenter, centroid) <= tolerance
+                ? m_stableCenterCount + 1
+                : 0;
+
+            m_previousSightingCenter = centroid;
+            m_hasPreviousSightingCenter = true;
+        }
+
+        /// <summary>Commit this object to a place, and stop deriving it from the samples.</summary>
+        internal void LockPositionAt(Vector3 center, Vector3 extent)
+        {
+            Center = center;
+            Extent = extent;
+            IsPositionLocked = true;
         }
 
         public static bool Collides(CameraTrackedTaxon taxonA, CameraTrackedTaxon taxonB)
@@ -638,9 +872,23 @@ namespace Meta.Utilities.CameraTaxonTracking
             var sampleList = new List<TrackSample>();
             sampleList.AddRange(taxonA.m_surfaceSamples);
             sampleList.AddRange(taxonB.m_surfaceSamples);
-            _ = sampleList.OrderBy(s => s.Timestamp);
-            var samples = sampleList.ToArray();
+            // Oldest first. Pruning past the cap drops from the front, and TimestampExists checks
+            // the last sample for this cycle's sighting, so both rely on time order. OrderBy returns
+            // a new sequence; it used to be discarded, leaving the samples in list order.
+            var samples = sampleList.OrderBy(s => s.Timestamp).ToArray();
+
+            // Preserve a committed position across the merge - SetSamples would otherwise
+            // recompute it from the combined hits and undo the commitment.
+            var wasLocked = taxonA.IsPositionLocked || taxonB.IsPositionLocked;
+            var lockedCenter = taxonA.IsPositionLocked ? taxonA.Center : taxonB.Center;
+            var lockedExtent = taxonA.IsPositionLocked ? taxonA.Extent : taxonB.Extent;
+
             taxonA.SetSamples(samples);
+            if (wasLocked)
+            {
+                taxonA.LockPositionAt(lockedCenter, lockedExtent);
+            }
+
             return taxonA;
         }
     }

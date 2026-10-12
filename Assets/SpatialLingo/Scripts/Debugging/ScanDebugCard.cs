@@ -213,9 +213,12 @@ namespace SpatialLingo.Debugging
             var suspect = spread > POSITION_SUSPECT_SPREAD_METERS;
             _ = text.Append(suspect ? "! " : "  ");
             _ = text.Append($"spread {spread:F2}m  pts {m_info.SamplePointCount}\n");
+            // Locked means the object has been seen enough times to commit to where it is; until
+            // then the position is still an average and can move.
+            _ = text.Append(m_info.IsPositionLocked ? "  pos LOCKED\n" : "  pos settling\n");
 
-            // Acquisition is single-file, so a waiting object is waiting on the queue, not on
-            // anything about itself. Say how far back it is.
+            // A waiting object is waiting on the queue, not on anything about itself. Say how far
+            // back it is.
             if (m_info.QueuePosition > 0)
             {
                 _ = text.Append($"queued #{m_info.QueuePosition} of {m_info.QueueLength}\n");

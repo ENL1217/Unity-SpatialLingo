@@ -309,9 +309,11 @@ namespace SpatialLingo.Lessons
 
         public void ShowLessonVisualization()
         {
-            // Find the image most facing user:
+            // Find the image most facing user. Falls back to the crop the lesson was acquired from
+            // when the object has no crops left to choose from.
             var bestImageContext = Lesson.BestImageForView(m_userHeadsetTransform);
-            if (bestImageContext == null)
+            var image = bestImageContext?.Image != null ? bestImageContext.Image : Lesson.Activity?.ContextImage;
+            if (bestImageContext == null || image == null)
             {
                 m_vizEffectContainer.SetActive(false);
                 m_isShowingVisualization = false;
@@ -347,7 +349,7 @@ namespace SpatialLingo.Lessons
             m_vizEffectContainer.transform.rotation = Quaternion.LookRotation(bestImageContext.Normal, bestImageContext.Up) * Quaternion.Euler(0.0f, 180.0f, 0.0f);
 
             // Show temporary effect
-            ShowVisualizationEffect(bestImageContext.Image);
+            ShowVisualizationEffect(image);
         }
 
         private void HideLessonVisualization()
@@ -763,6 +765,13 @@ namespace SpatialLingo.Lessons
         private void OnDestroy()
         {
             DebugStatusChanged -= OnDebugStatusChanged;
+
+            // A dispatched lesson's crops are duplicates it owns, and nothing else will free them.
+            if (Lesson != null && Lesson.IsUntrackedCopy)
+            {
+                Lesson.ReleaseTrackedImages();
+                Lesson.Activity?.ReleaseContextImage();
+            }
         }
     }
 }

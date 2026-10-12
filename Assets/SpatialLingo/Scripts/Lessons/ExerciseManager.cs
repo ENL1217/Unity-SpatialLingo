@@ -4,6 +4,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Meta.Utilities.MetaModelAPI;
 using Meta.XR.Samples;
 using SpatialLingo.AI;
 using SpatialLingo.AppSystems;
@@ -68,6 +69,10 @@ namespace SpatialLingo.Lessons
 
         private string m_currentTranscriptionEvaluationID;
 
+        // A spoken answer the model never replied to says nothing about the player, so the request
+        // is sent once more before giving up (first request plus one retry).
+        private const int MAX_TRANSCRIPTION_EVALUATION_ATTEMPTS = 2;
+
         private const float TIMEOUT_WAITING_TRACKING_FIRST = 2.0f; // not enough tracking elements
         private const float TIMEOUT_WAITING_TRACKING_OTHER = 8.0f;
         private const float TIMEOUT_EXPLORING_WORLD_FIRST = 2.0f; // outside of a lesson ~10-20s
@@ -119,6 +124,7 @@ namespace SpatialLingo.Lessons
             m_lessonManager.LessonCompletedSuccess += OnLessonCompleted;
 
             m_lessonsManager.ActivityAcquisitionFailed += OnActivityAcquisitionFailed;
+            ModelServiceHealth.DegradedChanged += OnModelServiceHealthChanged;
 
             m_transcriber.VoiceTranscriptionUpdateComplete += OnVoiceTranscriptionUpdateComplete;
             m_transcriber.VoiceTranscriptionUpdateIncomplete += OnVoiceTranscriptionUpdateIncomplete;
@@ -145,6 +151,32 @@ namespace SpatialLingo.Lessons
                 {
                     m_feedbackController.ShowErrorServer();
                 }
+            }
+        }
+
+        /// <summary>
+        /// Put the service state on the microphone UI.
+        ///
+        /// Reported from the health tracker rather than from a single failed request, so the
+        /// player is only told once several requests in a row have gone unanswered - by which
+        /// point nothing they do will make progress, and the icon is the honest answer to why
+        /// the app has stopped responding to them.
+        /// </summary>
+        private void OnModelServiceHealthChanged(bool degraded, ModelRequestOutcome outcome)
+        {
+            if (!degraded)
+            {
+                m_feedbackController.ClearError();
+                return;
+            }
+
+            if (outcome == ModelRequestOutcome.NoNetwork)
+            {
+                m_feedbackController.ShowErrorWifi();
+            }
+            else
+            {
+                m_feedbackController.ShowErrorServer();
             }
         }
 
@@ -194,6 +226,9 @@ namespace SpatialLingo.Lessons
 
         public void ResetForReuse()
         {
+            // StopLessons deactivates the interactor directly without raising LessonDeactivated,
+            // so the paired resume in OnLessonDeactivated would never run. Clear it here too.
+            m_lessonManager.ResumeAcquisition();
             m_lessonManager.StopLessons();
             StopRequestBestLessons();
             ClearActiveLessonsList();
@@ -204,6 +239,11 @@ namespace SpatialLingo.Lessons
         {
             m_tutorialIndex = 0;
             AppSessionData.Tier = tier;
+
+            if (SpatialLingoDebug.Enabled)
+            {
+                Debug.Log($"ExerciseManager - starting tier {tier}");
+            }
 
             // Pause image processing for high CPU / GPU activities:
             SetLessonManagerLayersPerFrameNone();
@@ -218,6 +258,9 @@ namespace SpatialLingo.Lessons
             // Disable interactions while delaying
             m_lessonManager.DisallowActivationsOnProximity();
             m_isLessonInteractionEnabled = false;
+            // Tearing down lessons can drop an active one without raising LessonDeactivated, which
+            // would leave acquisition suspended for the rest of the session.
+            m_lessonManager.ResumeAcquisition();
             StopRequestBestLessons();
             ClearActiveLessonsList();
 
@@ -408,6 +451,9 @@ namespace SpatialLingo.Lessons
             m_tutorialIndex = 0;
 
             m_gollyGoshManager.StopSpeaking();
+            // Speech validation shares a connection and the main thread with object acquisition;
+            // letting both run made validation roughly 3x slower. The queue resumes on exit.
+            m_lessonManager.SuspendAcquisition();
             RegisterActiveInteractor(interactor);
             m_transcriber.ClearTranscriptions();
             m_transcriber.SetTargetLanguage(Language.Language.AppSessionToWitaiLanguage(AppSessionData.TargetLanguage));
@@ -423,6 +469,7 @@ namespace SpatialLingo.Lessons
             m_currentTranscriptionEvaluationID = null;
             UpdateTimeoutInteraction();
             m_gollyGoshManager.StopSpeaking();
+            m_lessonManager.ResumeAcquisition();
             UnregisterActiveInteractor();
             m_feedbackController.HideMicFeedback();
             m_feedbackController.ClearTextFeedback();
@@ -444,6 +491,7 @@ namespace SpatialLingo.Lessons
             m_transcriber.StopListening();
             UpdateTimeoutInteraction();
             m_gollyGoshManager.StopSpeaking();
+            m_lessonManager.ResumeAcquisition();
 
             UnregisterActiveInteractor();
 
@@ -536,45 +584,67 @@ namespace SpatialLingo.Lessons
 
         private async void CheckForTranscriptionResponse(Lesson3DInteractor.PresentedWordContext words, string transcription)
         {
-            // Only want one of these evaluations at a time - if one is already running, need to ignore previous result:
+            // Only want one of these evaluations at a time - if one is already running, need to ignore previous result.
+            // The id is kept locally so the checks below compare against this evaluation, even across retries:
             m_currentTranscriptionEvaluationID = AssistantAI.ContextReferenceOrDefault();
+            var evaluationId = m_currentTranscriptionEvaluationID;
             m_feedbackController.DebugPanel?.ReportRequestSent(transcription);
 
             var label = m_activeLessonInteractor?.Lesson?.Activity?.DebugLabel ?? "lesson";
             var action = DebugActionLog.Begin(DebugActionKind.Lesson, label, "speech");
 
-            var response = await m_assistantAI.EvaluateTranscriptionForWordCloud(
-                AppSessionData.TargetLanguageAI, AppSessionData.UserLanguageAI, transcription, words.Nouns, words.Adjectives, words.Verbs,
-                m_currentTranscriptionEvaluationID);
-
-            // Check to see if the response is old, ignore if so
-            if (response != null && m_currentTranscriptionEvaluationID == response.ContextID)
+            WordCloudTranscriptPhraseResult response = null;
+            for (var attempt = 1; attempt <= MAX_TRANSCRIPTION_EVALUATION_ATTEMPTS; attempt++)
             {
-                if (response.IsPassing && m_activeLessonInteractor != null)
+                if (attempt > 1)
                 {
-                    DebugActionLog.Complete(action, DebugActionStatus.Success);
-                    OnAttemptSuccessLesson();
+                    Debug.LogWarning($"ExerciseManager - no reply to the spoken answer, retrying (attempt {attempt}/{MAX_TRANSCRIPTION_EVALUATION_ATTEMPTS})");
                 }
-                else
+
+                response = await m_assistantAI.EvaluateTranscriptionForWordCloud(
+                    AppSessionData.TargetLanguageAI, AppSessionData.UserLanguageAI, transcription, words.Nouns, words.Adjectives, words.Verbs,
+                    evaluationId);
+
+                // Stop once the model has answered, or once this evaluation is no longer current - the
+                // player spoke again, or the lesson ended and cleared the id - since nobody wants its answer.
+                // A null result means there were no words to check against, which a retry cannot fix.
+                if (response == null || response.HasVerdict || m_currentTranscriptionEvaluationID != evaluationId)
                 {
-                    // A pass with no interactor left is still a miss for the player, but it is a
-                    // different thing from the model rejecting the answer.
-                    var lostLesson = response.IsPassing && m_activeLessonInteractor == null;
-                    DebugActionLog.Complete(
-                        action,
-                        lostLesson ? DebugActionStatus.Interrupted : DebugActionStatus.Failed,
-                        lostLesson ? "passed but lesson ended" : response.FailReason);
-                    OnAttemptFailLesson(response.FailReason);
+                    break;
                 }
+            }
+
+            if (m_currentTranscriptionEvaluationID != evaluationId)
+            {
+                // A newer evaluation took over, or the lesson is gone - this one's answer is thrown away.
+                DebugActionLog.Complete(action, DebugActionStatus.Interrupted, "superseded by a newer answer");
+            }
+            else if (response == null)
+            {
+                // Nothing was sent to the model, so this is not the player's failure either.
+                DebugActionLog.Complete(action, DebugActionStatus.Failed, "no words to check the answer against");
+            }
+            else if (!response.HasVerdict)
+            {
+                // The service never answered, which says nothing about what the player said, so it
+                // is not counted as a failed attempt. The lesson stays open for them to answer again.
+                DebugActionLog.Complete(action, DebugActionStatus.Failed, $"no reply after {MAX_TRANSCRIPTION_EVALUATION_ATTEMPTS} attempts");
+            }
+            else if (response.IsPassing && m_activeLessonInteractor != null)
+            {
+                DebugActionLog.Complete(action, DebugActionStatus.Success);
+                OnAttemptSuccessLesson();
             }
             else
             {
-                // Either no response at all, or the player spoke again and a newer evaluation
-                // took over - this one's answer is thrown away either way.
+                // A pass with no interactor left is still a miss for the player, but it is a
+                // different thing from the model rejecting the answer.
+                var lostLesson = response.IsPassing && m_activeLessonInteractor == null;
                 DebugActionLog.Complete(
                     action,
-                    response == null ? DebugActionStatus.Failed : DebugActionStatus.Interrupted,
-                    response == null ? "no response" : "superseded by a newer answer");
+                    lostLesson ? DebugActionStatus.Interrupted : DebugActionStatus.Failed,
+                    lostLesson ? "passed but lesson ended" : response.FailReason);
+                OnAttemptFailLesson(response.FailReason);
             }
         }
 
@@ -647,6 +717,8 @@ namespace SpatialLingo.Lessons
             berry.BerrySqueezeInteraction -= OnBerrySqueezeInteraction;
             StopRequestBestLessons();
             m_lessonManager.DisallowActivationsOnProximity();
+            // StopLessons drops the active lesson without raising LessonDeactivated.
+            m_lessonManager.ResumeAcquisition();
             m_lessonManager.StopLessons();
             ClearActiveLessonsList(true);
             // Pause image processing for brief berry squeeze 
@@ -799,6 +871,12 @@ namespace SpatialLingo.Lessons
             m_completedInteractionCount += 1;
             m_activeLessonInteractor.CompleteActivation(m_centerEyeAnchor);
             AppSessionData.AddCompletedLesson(m_activeLessonInteractor.Lesson.Classification);
+            if (SpatialLingoDebug.Enabled)
+            {
+                var activity = m_activeLessonInteractor.Lesson.Activity;
+                Debug.Log($"ExerciseManager - completed {activity.DebugLabel} \"{activity.UserLanguageWord}\" in tier {AppSessionData.Tier} ({m_completedInteractionCount} this tier)");
+            }
+
             var userLanguage = AppSessionData.UserLanguageAI;
             m_gollyGoshManager.Speak(userLanguage, Tutorial.CompleteLessonPhrase());
 
@@ -1037,7 +1115,8 @@ namespace SpatialLingo.Lessons
             m_lessonManager.LessonDeactivated -= OnLessonDeactivated;
             m_lessonManager.LessonCompletedSuccess -= OnLessonCompleted;
 
-            m_lessonsManager.ActivityAcquisitionFailed += OnActivityAcquisitionFailed;
+            m_lessonsManager.ActivityAcquisitionFailed -= OnActivityAcquisitionFailed;
+            ModelServiceHealth.DegradedChanged -= OnModelServiceHealthChanged;
 
             m_transcriber.VoiceTranscriptionUpdateIncomplete -= OnVoiceTranscriptionUpdateIncomplete;
             m_transcriber.VoiceTranscriptionUpdateComplete -= OnVoiceTranscriptionUpdateComplete;

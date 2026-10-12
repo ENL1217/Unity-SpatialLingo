@@ -213,6 +213,18 @@ namespace SpatialLingo.Samples
         public void OnDestroy()
         {
             PassthroughCameraPermissions.AllCameraPermissionGranted -= OnAllCameraPermissionGranted;
+
+            if (m_lessonManager != null)
+            {
+                m_lessonManager.LessonAdded -= OnLessonAdded;
+                m_lessonManager.LessonUpdated -= OnLessonUpdated;
+                m_lessonManager.LessonRemoved -= OnLessonRemoved;
+                m_lessonManager.LessonTrackingChanged -= OnLessonTrackingChanged;
+
+                // The lesson manager runs async loops that only stop once it is disposed.
+                m_lessonManager.Dispose();
+                m_lessonManager = null;
+            }
         }
     }
 }

@@ -62,8 +62,8 @@ namespace SpatialLingo.Debugging
         public string DecisionReason = string.Empty;
 
         /// <summary>
-        /// True for the one object LessonsManager is acquiring right now. Acquisition is
-        /// single-file, so at most one candidate has this set.
+        /// True while LessonsManager is acquiring this object. Several objects can be acquired at
+        /// once while the room is being filled, so more than one candidate can have this set.
         /// </summary>
         public bool IsProcessing;
 
@@ -99,6 +99,9 @@ namespace SpatialLingo.Debugging
 
         /// <summary>How many depth-ray hits the position was averaged from.</summary>
         public int SamplePointCount => Lesson?.SamplePointCount ?? 0;
+
+        /// <summary>True once the position is committed and will no longer drift.</summary>
+        public bool IsPositionLocked => Lesson?.IsPositionLocked ?? false;
 
         public Vector3 Position => Lesson?.Position ?? Vector3.zero;
         public Vector3 Extent => Lesson?.Extent ?? Vector3.one;

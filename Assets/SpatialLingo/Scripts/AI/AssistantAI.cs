@@ -135,6 +135,11 @@ namespace SpatialLingo.AI
 
         private MetaModelRestApi m_modelApi;
 
+        /// <summary>
+        /// Whether logs may contain what the player said or the model's reply to it: in the editor
+        /// and development builds, or while debug mode is on for testing a release build.
+        /// </summary>
+        private static bool MayLogUserContent => Debug.isDebugBuild || Debugging.SpatialLingoDebug.Enabled;
 
         public AssistantAI(MetaModelRestApi modelApi) => m_modelApi = modelApi;
 
@@ -537,10 +542,14 @@ namespace SpatialLingo.AI
             }
 
             var spokenLanguageName = SupportedLanguageEnumToEnglishName(spokenLanguage);
-            _ = SupportedLanguageEnumToEnglishName(feedbackLanguage);
-            var prompt = $"You are a helpful language translation assistant that provides concise answers in the target language \"{spokenLanguageName}\".";
+            var feedbackLanguageName = SupportedLanguageEnumToEnglishName(feedbackLanguage);
+            // Deliberately does not ask the model to answer in the spoken language. That would
+            // fight with the request for a fixed verdict and yield the spoken-language word for
+            // "yes", which no verdict check can reasonably match. The verdict is JSON; only
+            // Reason carries natural language.
+            var prompt = $"You are a strict language evaluator. You reply with a single JSON object and nothing else. You never add commentary, explanation or markdown fences.";
             var request = "";
-            request += $"Provide a yes/no response only. A persons speech was transcribed to have said the statement: \"{transcript.ToLower()}\" in the context of the language: {spokenLanguageName}.";
+            request += $"A persons speech was transcribed to have said the statement: \"{transcript.ToLower()}\" in the context of the language: {spokenLanguageName}.";
 
             var hasAdjectives = false;
             var hasVerbs = false;
@@ -570,15 +579,15 @@ namespace SpatialLingo.AI
             request += "?";
             if (hasVerbs & hasAdjectives)
             {
-                request += $" The word: {nounList} must be present, and one or more of the listed adjectives: {adjList} must be present, and one or more of the listed verbs: {verbList} must be present in the statement to be acceptable. Otherwise the response should be no.";
+                request += $" The word: {nounList} must be present, and one or more of the listed adjectives: {adjList} must be present, and one or more of the listed verbs: {verbList} must be present in the statement to be acceptable. Otherwise it is not acceptable.";
             }
             else if (hasVerbs)
             {
-                request += $" The word: {nounList} must be present, and one or more of the listed verbs: {verbList} must be present in the statement to be acceptable. Otherwise the response should be no.";
+                request += $" The word: {nounList} must be present, and one or more of the listed verbs: {verbList} must be present in the statement to be acceptable. Otherwise it is not acceptable.";
             }
             else if (hasAdjectives)
             {
-                request += $" The word: {nounList} must be present, and one or more of the listed adjectives: {adjList} must be present in the statement to be acceptable. Otherwise the response should be no.";
+                request += $" The word: {nounList} must be present, and one or more of the listed adjectives: {adjList} must be present in the statement to be acceptable. Otherwise it is not acceptable.";
             }
             else
             {
@@ -600,7 +609,12 @@ namespace SpatialLingo.AI
 
             request += " Transcribed words in the user statement that are very phonetically similar to the expected words should be interpreted as the correct word and not marked as needing correction.";
 
-            request += $" Respond yes or no on the first line. If the response is \"no\", on the second line: also include a very short sentence (in \"{feedbackLanguage}\") with a reason as to why the transcribed speech is not acceptable. Don't repeat the input statement, only a brief reason why the input is not accepted. ";
+            // A fixed JSON shape rather than a yes/no word, because a word answer comes back in
+            // whatever language the reply is written in. A "Pass" boolean is language independent.
+            request += " Respond with a single JSON object and nothing else, with exactly two keys:";
+            request += " \"Pass\" (a JSON boolean, true if the statement is acceptable, false otherwise)";
+            request += $" and \"Reason\" (a string). When \"Pass\" is true, \"Reason\" must be an empty string. When \"Pass\" is false, \"Reason\" must be one very short sentence written in \"{feedbackLanguageName}\" explaining why the speech is not acceptable.";
+            request += " Do not repeat the input statement in the reason. Do not wrap the JSON in markdown fences. Do not add any text before or after the JSON object.";
 
             // Set system prompt
             var chat = m_modelApi.StartNewChat(prompt);
@@ -630,28 +644,206 @@ namespace SpatialLingo.AI
             var reason = "";
             if (response != null)
             {
-                var responseText = response.Message.Text;
-                var lines = responseText.Split("\n");
-                if (lines.Length > 0)
-                {
-                    var line0 = lines[0].ToLower();
-                    if (line0.Contains("yes"))
-                    {
-                        answer = true;
-                    }
-                    else if (lines.Length > 1)
-                    {
-                        reason = lines[1];
-                    }
-                }
+                ParseTranscriptEvaluation(response.Message.Text, out answer, out reason);
+            }
+
+            // One line per evaluation, so a rejected answer can be traced from logcat: what was
+            // heard, what the model replied (escaped so its line breaks show), and the verdict.
+            // It contains the player's speech, so it is only written while testing.
+            if (MayLogUserContent)
+            {
+                var rawReply = response?.Message?.Text?.Replace("\r", "\\r").Replace("\n", "\\n") ?? "<no response>";
+                Debug.Log($"AssistantAI - EvaluateTranscriptionForWordCloud ({spokenLanguageName}): heard \"{transcript}\" | reply: {rawReply} | pass={answer} reason=\"{reason}\"");
             }
 
             var result = new WordCloudTranscriptPhraseResult(spokenLanguage, transcript, nouns, adjectives, verbs, answer, reason, context)
             {
                 Stats = response?.Usage,
+                HasVerdict = response != null,
             };
             EvaluateTranscriptionComplete?.Invoke(result);
             return result;
+        }
+
+        /// <summary>
+        /// Affirmatives for the fallback path, in every language the app supports. Only consulted
+        /// when the reply has no JSON verdict - a correct answer must not be rejected just because
+        /// the shape was wrong. Matched against the reply's first word, so "Yes, that's right"
+        /// passes and "No, I cannot say yes" does not.
+        /// </summary>
+        private static readonly string[] s_affirmativeWords =
+        {
+            "yes", "yeah", "yep", "true",
+            "sí", "sì",          // Spanish, Italian
+            "oui",               // French
+            "ja",                // German
+            "sim",               // Portuguese
+            "có", "vâng",        // Vietnamese
+            "نعم", "naam",       // Arabic
+            "ใช่",               // Thai
+            "हाँ", "haan",       // Hindi
+            "iya",               // Indonesian
+            "oo", "opo",         // Tagalog
+        };
+
+        /// <summary>
+        /// Affirmatives that are also ordinary words elsewhere - unaccented "si" is Spanish "if"
+        /// and the Italian pronoun, "ya" is Spanish "already". Only accepted when they are the
+        /// whole first line, never as the opening word of a sentence.
+        /// </summary>
+        private static readonly string[] s_standaloneAffirmativeWords = { "si", "ya", "co" };
+
+        /// <summary>
+        /// Whether a reply's first line opens with a yes. Thai is written without spaces between
+        /// words, so its affirmative may run straight into the next word ("ใช่ครับ").
+        /// </summary>
+        private static bool StartsWithAffirmative(string firstLine)
+        {
+            var line = firstLine.ToLowerInvariant();
+            var start = 0;
+            while (start < line.Length && !IsWordCharacter(line[start]))
+            {
+                start++;
+            }
+
+            var end = start;
+            while (end < line.Length && IsWordCharacter(line[end]))
+            {
+                end++;
+            }
+
+            var word = line[start..end];
+            if (word.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (var affirmative in s_affirmativeWords)
+            {
+                if (word == affirmative || (affirmative == "ใช่" && word.StartsWith(affirmative, StringComparison.Ordinal)))
+                {
+                    return true;
+                }
+            }
+
+            var restHasWords = false;
+            for (var i = end; i < line.Length && !restHasWords; i++)
+            {
+                restHasWords = IsWordCharacter(line[i]);
+            }
+
+            return !restHasWords && Array.IndexOf(s_standaloneAffirmativeWords, word) >= 0;
+
+            // Combining marks are part of the word in Hindi and Thai ("हाँ", "ใช่").
+            static bool IsWordCharacter(char c) => char.IsLetter(c) ||
+                char.GetUnicodeCategory(c) is System.Globalization.UnicodeCategory.NonSpacingMark or System.Globalization.UnicodeCategory.SpacingCombiningMark;
+        }
+
+        /// <summary>
+        /// Read the verdict out of an evaluation response.
+        ///
+        /// The model is asked for {"Pass": bool, "Reason": string}. If that cannot be parsed the
+        /// fallback looks for an affirmative token, because the alternative - defaulting to
+        /// "failed" - tells the user they got it wrong when the model may well have said yes.
+        /// </summary>
+        private static void ParseTranscriptEvaluation(string responseText, out bool pass, out string reason)
+        {
+            pass = false;
+            reason = "";
+
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                return;
+            }
+
+            // Trimmed before the fences are stripped: the fence patterns are anchored, so leading
+            // whitespace would leave the fence in place.
+            var cleaned = PrepareJsonStringForParsing(responseText.Trim()).Trim();
+
+            // The verdict is read from the "Pass" key wherever the object sits. JsonUtility alone
+            // is not enough: it is case sensitive, never returns null for valid JSON, and throws
+            // on text around the object, so {"pass": true}, {} or a short preamble would all have
+            // read as a fail without ever reaching the fallback.
+            var json = ExtractJsonObject(cleaned);
+            if (json != null && TryReadVerdict(json, out pass, out reason))
+            {
+                return;
+            }
+
+            // Fallback: the model answered in prose. Judge the first non-empty line only, so a
+            // "no" whose explanation happens to contain "yes" is not read as a pass.
+            Debug.LogWarning(MayLogUserContent
+                ? $"EvaluateTranscriptionForWordCloud - verdict was not JSON, falling back to text: \"{cleaned}\""
+                : "EvaluateTranscriptionForWordCloud - verdict was not JSON, falling back to text");
+            var lines = cleaned.Split('\n');
+            var firstLine = "";
+            var firstLineIndex = -1;
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    firstLine = lines[i].Trim();
+                    firstLineIndex = i;
+                    break;
+                }
+            }
+
+            if (StartsWithAffirmative(firstLine))
+            {
+                pass = true;
+                return;
+            }
+
+            // Everything after the verdict line is the explanation, blank lines and all. Joining
+            // the remainder keeps a reason that starts further down rather than only the line
+            // immediately after the verdict.
+            if (firstLineIndex >= 0 && firstLineIndex + 1 < lines.Length)
+            {
+                reason = string.Join(" ", lines, firstLineIndex + 1, lines.Length - firstLineIndex - 1).Trim();
+            }
+        }
+
+        private static readonly Regex s_verdictPassKey = new(@"""pass""\s*:\s*""?(true|false)""?", RegexOptions.IgnoreCase);
+        private static readonly Regex s_verdictReasonKey = new(@"""reason""\s*:\s*""((?:[^""\\]|\\.)*)""", RegexOptions.IgnoreCase);
+
+        /// <summary>The text from the first '{' to the last '}', or null when there is no object.</summary>
+        private static string ExtractJsonObject(string text)
+        {
+            var start = text.IndexOf('{');
+            var end = text.LastIndexOf('}');
+            return start >= 0 && end > start ? text[start..(end + 1)] : null;
+        }
+
+        /// <summary>
+        /// Read "Pass" and "Reason" from a verdict object, in any letter case and alongside any
+        /// other keys. False when there is no "Pass" key, so the caller falls back to prose.
+        /// </summary>
+        private static bool TryReadVerdict(string json, out bool pass, out string reason)
+        {
+            pass = false;
+            reason = "";
+            var passMatch = s_verdictPassKey.Match(json);
+            if (!passMatch.Success)
+            {
+                return false;
+            }
+
+            pass = string.Equals(passMatch.Groups[1].Value, "true", StringComparison.OrdinalIgnoreCase);
+            var reasonMatch = s_verdictReasonKey.Match(json);
+            if (reasonMatch.Success)
+            {
+                try
+                {
+                    reason = Regex.Unescape(reasonMatch.Groups[1].Value);
+                }
+                catch (ArgumentException)
+                {
+                    // A malformed escape: show the reason as written rather than none at all.
+                    reason = reasonMatch.Groups[1].Value;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

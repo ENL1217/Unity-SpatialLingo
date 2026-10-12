@@ -146,7 +146,12 @@ namespace SpatialLingo.Debugging
             _ = text.Append("       ").Append(FormatStats(result.Stats)).Append('\n');
             _ = text.Append('\n');
 
-            if (result.IsPassing)
+            if (!result.HasVerdict)
+            {
+                // The request failed, so IsPassing is meaningless and showing FAIL would mislead.
+                _ = text.Append("NO REPLY");
+            }
+            else if (result.IsPassing)
             {
                 _ = text.Append("PASS");
             }

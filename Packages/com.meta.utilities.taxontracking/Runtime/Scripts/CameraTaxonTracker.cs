@@ -21,6 +21,12 @@ namespace Meta.Utilities.CameraTaxonTracking
         private const float MAX_DISTANCE_DEPTH_RAYCAST = 5.0f; //5m = 16ft Results farther than this will be ignored
         private const float CROP_IMAGE_PADDING_SIDES = 0.10f; // Additional pixels added to cropped YOLO images (ratio)
 
+        // How far an outer depth-ray hit may sit from the centre hit before it is treated as
+        // having missed the object. Scaled by viewing distance, because the same angular slip
+        // covers more ground further away, with a floor so nearby objects still get some latitude.
+        private const float SAMPLE_OUTLIER_RELATIVE_LIMIT = 0.25f;
+        private const float SAMPLE_OUTLIER_MINIMUM_METERS = 0.20f;
+
         [SerializeField] public MeshRenderer DebugRenderer;
         [SerializeField] public GameObject DebugRay;
 
@@ -100,6 +106,21 @@ namespace Meta.Utilities.CameraTaxonTracking
                 return;
             }
             StopQueryThread();
+        }
+
+        /// <summary>
+        /// Every crop a currently tracked taxon holds. Passed as the keep set when releasing a
+        /// taxon that has left tracking, since a merge can leave it sharing samples with a live one.
+        /// </summary>
+        public HashSet<Texture2D> HeldImages()
+        {
+            var held = new HashSet<Texture2D>();
+            foreach (var tracked in m_trackedTaxa)
+            {
+                held.UnionWith(tracked.HeldImages);
+            }
+
+            return held;
         }
 
         private Texture2D GetCameraStillTexture2D(WebCamTexture webCamTexture)
@@ -275,6 +296,22 @@ namespace Meta.Utilities.CameraTaxonTracking
                 TaxonRemoved?.Invoke(data);
             }
 
+            // A removed taxon's crops are owned by nothing once listeners have seen it, so destroy
+            // them - unless a listener kept the taxon (a pinned lesson). A taxon merged into
+            // another is reported removed too, but the survivor now holds the same samples, so
+            // anything a tracked taxon still references is spared.
+            if (removedList.Count > 0)
+            {
+                var stillHeld = HeldImages();
+                foreach (var taxon in removedList)
+                {
+                    if (!taxon.KeepImagesAfterRemoval)
+                    {
+                        taxon.ReleaseImages(stillHeld);
+                    }
+                }
+            }
+
             // Done
             m_isPolling = false;
         }
@@ -302,6 +339,18 @@ namespace Meta.Utilities.CameraTaxonTracking
             ray.origin += cameraPose.position;
             ray.direction = cameraPose.rotation * ray.direction;
             return ray;
+        }
+
+        /// <summary>
+        /// Whether an outer depth-ray hit landed off the object: further from the centre hit than
+        /// the object could plausibly extend at this viewing distance.
+        /// </summary>
+        internal static bool IsDepthHitOffObject(Vector3 cameraPosition, Vector3 centerHit, Vector3 hit)
+        {
+            var reach = Mathf.Max(
+                Vector3.Distance(cameraPosition, centerHit) * SAMPLE_OUTLIER_RELATIVE_LIMIT,
+                SAMPLE_OUTLIER_MINIMUM_METERS);
+            return Vector3.Distance(hit, centerHit) > reach;
         }
 
         private CameraTrackedTaxon ClassifiedObjectToTaxa(ImageObjectClassifier.ClassifiedImageObject imageObject, Texture2D fullImage)
@@ -352,18 +401,43 @@ namespace Meta.Utilities.CameraTaxonTracking
             var samplePoints3D = new List<Vector3>();
             var sampleEdges3D = new List<bool>();
 
+            // Index 0 is the box centre, which is the one ray that is reliably pointing at the
+            // object rather than past it. Everything else is judged against it.
+            var hasCenterHit = false;
+            var centerHit = Vector3.zero;
+
             for (var i = 0; i < putativePoints2D.Count; i++)
             {
                 var point2D = putativePoints2D[i];
                 var ray = GetCameraRay(point2D);
                 // Depth API samples could return values not on the actual object, as the rectangle is only rough
                 var didHit = m_raycastManager.Raycast(ray, out var hitInfo, MAX_DISTANCE_DEPTH_RAYCAST);
-                if (didHit)
+                if (!didHit)
                 {
-                    var hitCenter = new Vector3(hitInfo.point.x, hitInfo.point.y, hitInfo.point.z);
-                    samplePoints3D.Add(hitCenter);
-                    sampleEdges3D.Add(putativeEdges[i]);
+                    continue;
                 }
+
+                var hitCenter = new Vector3(hitInfo.point.x, hitInfo.point.y, hitInfo.point.z);
+                if (i == 0)
+                {
+                    hasCenterHit = true;
+                    centerHit = hitCenter;
+                }
+                else if (hasCenterHit)
+                {
+                    // The detection box is only a rough rectangle, so an outer ray easily slips
+                    // past a small object and lands on whatever is behind it - a desk edge, or the
+                    // floor below. Such hits would otherwise enter the average and drag the whole
+                    // object with them. Anything implausibly far from the centre hit is a miss,
+                    // not a measurement.
+                    if (IsDepthHitOffObject(cameraPose.position, centerHit, hitCenter))
+                    {
+                        continue;
+                    }
+                }
+
+                samplePoints3D.Add(hitCenter);
+                sampleEdges3D.Add(putativeEdges[i]);
             }
 
             // 2+ samples

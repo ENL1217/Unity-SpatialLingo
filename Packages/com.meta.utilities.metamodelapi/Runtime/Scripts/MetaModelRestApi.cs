@@ -265,9 +265,11 @@ namespace Meta.Utilities.MetaModelAPI
                 var response = await m_client.PostAsync(endpoint, content);
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
+                    // The request body holds the prompt, the player's words and any image, so it
+                    // is only logged in the editor and development builds.
                     Debug.LogError(
-                        $"Expected response code: {HttpStatusCode.OK}, got: {response.StatusCode} [{(int)response.StatusCode}]\n" +
-                        $"Request Data:\n{requestJSON}");
+                        $"Expected response code: {HttpStatusCode.OK}, got: {response.StatusCode} [{(int)response.StatusCode}]" +
+                        (Debug.isDebugBuild ? $"\nRequest Data:\n{requestJSON}" : string.Empty));
                     Debug.LogError($"Server Reason:\n{response.ReasonPhrase}\nServer Content:\n{response.Content}");
                     ModelServiceHealth.Report(ModelRequestOutcome.ServerError);
                     return (null, roundTrip.ElapsedMilliseconds);
@@ -363,9 +365,11 @@ namespace Meta.Utilities.MetaModelAPI
 
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
+                    // The request body holds the prompt, the player's words and any image, so it
+                    // is only logged in the editor and development builds.
                     Debug.LogError(
-                        $"Expected response code: {HttpStatusCode.OK}, got: {response.StatusCode} [{(int)response.StatusCode}]\n" +
-                        $"Request Data:\n{requestJSON}");
+                        $"Expected response code: {HttpStatusCode.OK}, got: {response.StatusCode} [{(int)response.StatusCode}]" +
+                        (Debug.isDebugBuild ? $"\nRequest Data:\n{requestJSON}" : string.Empty));
                     Debug.LogError($"Server Reason:\n{response.ReasonPhrase}\nServer Content:\n{response.Content}");
                     ModelServiceHealth.Report(ModelRequestOutcome.ServerError);
                     return (null, roundTrip.ElapsedMilliseconds);

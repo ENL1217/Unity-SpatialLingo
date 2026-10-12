@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: SpatialLingoSettings
   m_EditorClassIdentifier: 
   DebugModeEnabled: 0
+  ParallelAcquisitionEnabled: 1
+  ParallelAcquisitionCount: 2
   MetaModelApiKey: 
   MetaModelId: 

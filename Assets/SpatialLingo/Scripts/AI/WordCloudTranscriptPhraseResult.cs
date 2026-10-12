@@ -16,6 +16,12 @@ namespace SpatialLingo.AI
         /// </summary>
         public MetaModelRestApi.ModelUsage Stats;
 
+        /// <summary>
+        /// True when the model answered. False when the request failed, in which case IsPassing
+        /// carries no meaning and the attempt must not count against the player.
+        /// </summary>
+        public bool HasVerdict;
+
         public readonly AssistantAI.SupportedLanguage TargetLanguage;
         public readonly string Transcript;
         public readonly string[] Nouns;

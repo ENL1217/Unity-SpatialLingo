@@ -80,6 +80,13 @@ namespace SpatialLingo.AppSystems
 
         private void Start() => Init();
 
+        private void OnDestroy()
+        {
+            // The lesson manager runs async loops that only stop once it is disposed.
+            m_lessonManager?.Dispose();
+            m_lessonManager = null;
+        }
+
         public void Init()
         {
             // Tracing - Uncomment to run Graphics Collection Trace
@@ -153,7 +160,8 @@ namespace SpatialLingo.AppSystems
             var modelApi = new MetaModelRestApi();
             var assistant = new AssistantAI(modelApi);
             // LessonsManager
-            m_lessonManager = new LessonsManager(m_taxonTracker, assistant, AssistantAI.SupportedLanguage.English, AssistantAI.SupportedLanguage.Spanish, m_faceBlur);
+            // The head transform lets acquisition rank what the player is looking at first.
+            m_lessonManager = new LessonsManager(m_taxonTracker, assistant, AssistantAI.SupportedLanguage.English, AssistantAI.SupportedLanguage.Spanish, m_faceBlur, HeadsetEyeCenterTransform);
             // Lesson Interaction
             LessonInteractionManager = new LessonInteractionManager(m_lessonManager, m_lessonInteractorPrefab, HeadsetEyeCenterTransform, Speaker);
             // Exercise Manager
