@@ -56,6 +56,7 @@ namespace SpatialLingo.States
 
             m_mound.SetOrientation(position, Quaternion.identity);
             m_mound.ShowShimmer();
+            Debug.Log("AIEnglish companion intro is visible.");
             var seedGameObject = Instantiate(m_seedControllerPrefab);
             m_seedController = seedGameObject.GetComponent<LanguageSeedController>();
             Variables.Application.Set(nameof(LanguageSeedController), m_seedController);

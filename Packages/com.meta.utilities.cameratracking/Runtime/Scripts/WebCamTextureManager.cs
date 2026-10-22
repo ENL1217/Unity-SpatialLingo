@@ -22,6 +22,7 @@ namespace Meta.Utilities.CameraTracking
         public WebCamTexture WebCamTexture { get; private set; }
 
         private bool m_hasPermission;
+        private Coroutine m_initialization;
 
         private void Awake()
         {
@@ -53,13 +54,14 @@ namespace Meta.Utilities.CameraTracking
             }
 
             PCD.DebugMessage(LogType.Log, "PCA: All permissions have been granted");
-            _ = StartCoroutine(InitializeWebCamTexture());
+            BeginInitialization();
         }
 
         private void OnDisable()
         {
             PCD.DebugMessage(LogType.Log, $"PCA: {nameof(OnDisable)}() was called");
-            StopCoroutine(InitializeWebCamTexture());
+            if (m_initialization != null) StopCoroutine(m_initialization);
+            m_initialization = null;
             if (WebCamTexture != null)
             {
                 WebCamTexture.Stop();
@@ -76,18 +78,31 @@ namespace Meta.Utilities.CameraTracking
                     return;
 
                 m_hasPermission = true;
-                _ = StartCoroutine(InitializeWebCamTexture());
+                BeginInitialization();
             }
+        }
+
+        private void BeginInitialization()
+        {
+            if (m_initialization != null) StopCoroutine(m_initialization);
+            m_initialization = StartCoroutine(InitializeWebCamTexture());
         }
 
         private IEnumerator InitializeWebCamTexture()
         {
-            // Check if Passhtrough is present in the scene and is enabled
-            var ptLayer = FindAnyObjectByType<OVRPassthroughLayer>();
-            if (ptLayer == null || !PassthroughCameraUtils.IsPassthroughEnabled())
+            // Scene loading and permission callbacks can run before the new passthrough layer
+            // initializes. Yield until it is ready instead of abandoning camera startup.
+            yield return null;
+            var warned = false;
+            var waitStarted = Time.realtimeSinceStartup;
+            while (FindAnyObjectByType<OVRPassthroughLayer>() == null || !PassthroughCameraUtils.IsPassthroughEnabled())
             {
-                PCD.DebugMessage(LogType.Error, "Passthrough must be enabled to use the Passthrough Camera API.");
-                yield break;
+                if (!warned && Time.realtimeSinceStartup - waitStarted > 10f)
+                {
+                    PCD.DebugMessage(LogType.Warning, "Waiting for passthrough initialization before starting the camera.");
+                    warned = true;
+                }
+                yield return null;
             }
 
 #if !UNITY_6000_OR_NEWER

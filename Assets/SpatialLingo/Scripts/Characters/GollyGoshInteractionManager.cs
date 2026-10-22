@@ -91,6 +91,7 @@ namespace SpatialLingo.Characters
             m_speaker.transform.SetParent(Controller.GetAudioTransform());
 
             // Mark GG as spawned
+            Debug.Log($"AIEnglish companion ready; room-assisted spawn: {result != null}");
             GollyGoshSpawned?.Invoke();
         }
 
@@ -484,7 +485,11 @@ namespace SpatialLingo.Characters
         /// <returns>best guess default location for spawning</returns>
         private Vector3 GetDefaultSpawnPosition()
         {
-            var position = new Vector3();
+            // A reachable, visible location even without room anchors. World
+            // origin may be behind the player or below the current floor.
+            var forward = Vector3.ProjectOnPlane(m_centerEyeAnchor.forward, Vector3.up).normalized;
+            if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
+            var position = m_centerEyeAnchor.position + forward * 1.1f - Vector3.up * 0.8f;
             var mruk = MRUK.Instance;
             if (mruk != null)
             {
@@ -500,8 +505,8 @@ namespace SpatialLingo.Characters
                     if (floor != null)
                     {
                         // Default to floor location 
-                        var userHead = m_centerEyeAnchor.position;
-                        _ = floor.GetClosestSurfacePosition(userHead, out var closestFloorPoint, out _, MRUKAnchor.ComponentType.All);
+                        var floorTarget = m_centerEyeAnchor.position + forward * 1.1f;
+                        _ = floor.GetClosestSurfacePosition(floorTarget, out var closestFloorPoint, out _, MRUKAnchor.ComponentType.All);
                         position = closestFloorPoint;
                     }
                 }

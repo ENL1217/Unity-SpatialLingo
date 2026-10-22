@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Meta.Utilities.CameraTracking;
 using Meta.Utilities.ImageUtilities;
 using Meta.Utilities.ObjectClassifier;
@@ -56,9 +57,8 @@ namespace Meta.Utilities.CameraTaxonTracking
         private Pose m_cachedCameraPose;
         private Vector2Int m_cachedCameraResolution;
 
-        private Thread m_queryWaitThread;
+        private CancellationTokenSource m_queryCancellation;
         private static int s_querySleepMilliseconds = 100;
-        private static DateTime s_lastRequestTime;
         private bool m_isPolling;
         private DateTime m_observationCameraTimestamp;
 
@@ -76,6 +76,7 @@ namespace Meta.Utilities.CameraTaxonTracking
 
         public void Dispose()
         {
+            StopPolling();
             if (m_objectClassifier != null)
             {
                 m_objectClassifier.ImageProcessedComplete -= OnImageProcessedComplete;
@@ -485,70 +486,51 @@ namespace Meta.Utilities.CameraTaxonTracking
 
         private void StartNewQueryThread()
         {
-            var wasThread = m_queryWaitThread;
-            m_queryWaitThread = new Thread(QueryService);
-            m_queryWaitThread.Start();
-            if (wasThread != null)
-            {
-                wasThread.Abort();
-            }
+            m_queryCancellation?.Dispose();
+            m_queryCancellation = new CancellationTokenSource();
+            _ = QueryServiceAsync(m_queryCancellation.Token);
         }
 
         private void StopQueryThread()
         {
-            if (m_queryWaitThread != null)
-            {
-                m_queryWaitThread.Abort();
-                m_queryWaitThread = null;
-            }
+            m_isPolling = false;
+            m_queryCancellation?.Cancel();
+            m_queryCancellation?.Dispose();
+            m_queryCancellation = null;
         }
 
-        private void QueryService()
+        private async Task QueryServiceAsync(CancellationToken cancellation)
         {
-            // Wait some minimum amount of time:
-            Thread.Sleep(100);
-
-            var now = DateTime.Now;
-            var diff = now - s_lastRequestTime;
-            s_lastRequestTime = DateTime.Now;
-            var sleepTime = (int)Math.Max(0.0, s_querySleepMilliseconds - diff.TotalMilliseconds);
-            if (sleepTime > 0)
+            try
             {
-                Thread.Sleep(sleepTime);
+                while (!cancellation.IsCancellationRequested)
+                {
+                    // A camera may need several frames after consent/resume. Never sleep or
+                    // recursively retry on Unity's main thread: that prevents it becoming ready.
+                    await Task.Delay(Math.Max(100, s_querySleepMilliseconds), cancellation);
+                    await Awaitable.MainThreadAsync();
+                    cancellation.ThrowIfCancellationRequested();
+                    if (!m_isPolling || m_objectClassifier == null || m_cameraTextureManager == null) return;
+                    var webTexture = m_cameraTextureManager.WebCamTexture;
+                    if (webTexture == null || !webTexture.isPlaying || webTexture.width <= 16)
+                        continue;
+
+                    if (m_cachedCameraResolution.x == 0)
+                        m_cachedCameraResolution = PassthroughCameraUtils.GetCameraIntrinsics(m_cachedCameraEye).Resolution;
+                    m_cachedCameraPose = PassthroughCameraUtils.GetCameraPoseInWorld(m_cachedCameraEye);
+                    var texture2D = GetCameraStillTexture2D(webTexture);
+                    await Awaitable.NextFrameAsync(cancellation);
+                    cancellation.ThrowIfCancellationRequested();
+                    if (m_objectClassifier != null) m_objectClassifier.ProcessImageForClassification(texture2D);
+                    return; // Classification completion releases m_isPolling for the next query.
+                }
             }
-            // Switch to main thread:
-            CheckEnumerator();
-        }
-
-        private async void CheckEnumerator()
-        {
-            await Awaitable.MainThreadAsync();
-
-            // Save position of camera while wait for process to complete:
-            if (m_cachedCameraResolution.x == 0)
+            catch (OperationCanceledException) { }
+            catch (Exception exception)
             {
-                m_cachedCameraResolution = PassthroughCameraUtils.GetCameraIntrinsics(m_cachedCameraEye).Resolution;
+                m_isPolling = false;
+                Debug.LogWarning($"Camera query failed: {exception.GetType().Name}");
             }
-
-            var cachedCameraEye = PassthroughCameraEye.Left;
-            var cachedCameraPose = PassthroughCameraUtils.GetCameraPoseInWorld(cachedCameraEye);
-            m_cachedCameraPose.position = cachedCameraPose.position;
-            m_cachedCameraPose.rotation = cachedCameraPose.rotation;
-
-            var webTexture = m_cameraTextureManager.WebCamTexture;
-            if (webTexture != null)
-            {
-                var texture2D = GetCameraStillTexture2D(webTexture);
-                await Awaitable.NextFrameAsync();
-
-                m_objectClassifier.ProcessImageForClassification(texture2D);
-            }
-            else
-            {
-                Debug.LogWarning($"WebCamTexture was not ready, retry again");
-                QueryService();
-            }
-            await Awaitable.NextFrameAsync();
         }
     }
 }

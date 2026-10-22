@@ -1,16 +1,5 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-buildscript {
-    repositories {
-        google()
-        jcenter()
-    }
-
-    dependencies {
-        classpath "com.android.tools.build:gradle:7.1.2"
-    }
-}
-
 apply plugin: 'com.android.library'
 
 android {
@@ -23,10 +12,10 @@ android {
         }
     }
 
-    buildToolsVersion "32.0.0"
-    compileSdkVersion 32
+    buildToolsVersion providers.gradleProperty("unity.buildToolsVersion").get()
+    compileSdk providers.gradleProperty("unity.compileSdkVersion").get().toInteger()
     defaultConfig {
-        targetSdk 33
-        minSdk 32
+        targetSdk providers.gradleProperty("unity.targetSdkVersion").get().toInteger()
+        minSdk providers.gradleProperty("unity.minSdkVersion").get().toInteger()
     }
 }

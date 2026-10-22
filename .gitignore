@@ -95,5 +95,9 @@ Assets/Unity.VisualScripting.Generated/*
 Assets/Unity.VisualScripting.Generated.*
 
 keystore-passwords.txt
+.local/
+AIEnglish.OpenRouter.json
+Assets/Resources/PerformanceTestRun*.json*
+Assets/StreamingAssets/RuntimeActionBindings.json*
 Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset
 Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset.meta

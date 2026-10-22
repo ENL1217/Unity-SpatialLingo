@@ -1,0 +1,10 @@
+{
+  "name": "AIEnglish.Tests",
+  "references": ["Meta.Utilities.MetaModelAPI.Runtime", "Meta.Utilities.SpeechAndText", "Meta.WitAi",
+    "Meta.Utilities.TaxonTracking.Runtime", "Meta.Utilities.CameraTracking.Runtime", "Meta.Utilities.ObjectRecognition", "meta.xr.mrutilitykit"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

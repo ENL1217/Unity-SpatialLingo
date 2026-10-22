@@ -1,5 +1,7 @@
 # Meta Model API
 
+> **AIEnglish fork:** this branch keeps the sample's C# interface but sends requests to OpenRouter free vision models. Follow the [current setup guide](../../Documentation/OPENROUTER_SETUP.zh-TW.md) for per-device keys and free-only restrictions. Meta endpoint/authentication instructions below are upstream reference material.
+
 Meta Model API is Meta's developer API for the Muse family of models.
 
 ## Overview

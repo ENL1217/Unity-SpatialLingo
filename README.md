@@ -2,6 +2,12 @@
 
 # Spatial Lingo
 
+## AIEnglish fork — OpenRouter free vision
+
+This branch uses **Unity 6000.3.27f1**, Quest-direct OpenRouter requests, and explicit `:free` vision models. No PC inference server or OpenCode installation is required. The original Wit.ai speech recognition and TTS remain in use.
+
+See [繁中建置與設定指南](Documentation/OPENROUTER_SETUP.zh-TW.md) for CLI builds, installing the APK, configuring your own key, free quota limits, and validation status.
+
 Spatial Lingo is a spatialized language practice experience, guiding users to identify and describe objects around their environment in a target language. This was made possible using Meta libraries, such as the [Meta Model API](https://ai.developer.meta.com/),  [Mixed Reality Utility Kit (MRUK)](https://developers.meta.com/horizon/documentation/unity/unity-mr-utility-kit-overview/), and the [Voice SDK](https://developers.meta.com/horizon/documentation/unity/voice-sdk-overview). This experience supports both hand tracking and controllers.
 
 Follow Golly Gosh (the polyglot!) as they lead you through your own, real-world space, allowing you to practice your vocabulary using familiar objects. Grow the language tree by completing lessons from Golly Gosh, learning nouns, verbs, and adjectives along the way!
@@ -32,13 +38,11 @@ git clone https://github.com/oculus-samples/Unity-SpatialLingo.git
 
 ### Application Settings
 
-For development, configure your Meta Model API key as `MetaModelApiKey` in [Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset](./Assets/SpatialLingo/Resources/ScriptableSettings/SpatialLingoSettings.asset). Which models a key can reach varies by key, so if requests fail with `model_not_found`, list the available ids with `GET https://api.meta.ai/v1/models` and set one as `MetaModelId`.
-
-**Important:** Do not ship Quest apps with embedded API keys, as they can be extracted from the app binary. For production, use `MetaModelRestApi.GetApiKeyAsync` to implement server-side authentication. See the [Meta Model API documentation](Packages/com.meta.utilities.metamodelapi/README.md#configuration) for details.
+This fork reads `AIEnglish.OpenRouter.json` from the app's persistent data directory. API keys are not serialized into Unity assets or included in the APK. Use [Tools/Set-OpenRouterConfig.ps1](Tools/Set-OpenRouterConfig.ps1) to enter a key privately and push the configuration to your Quest. For editor play mode, `AIENGLISH_OPENROUTER_API_KEY` is also supported.
 
 ## How to run the project in Unity
 
-1. Make sure you're using Unity 6000.0.51f1 or newer
+1. Use Unity 6000.3.27f1 for this branch
 2. Load the [Assets/SpatialLingo/Scenes/MainScene.unity](Assets/SpatialLingo/Scenes/MainScene.unity) scene
 3. Open the Meta XR Simulator
 4. Start Play Mode
@@ -65,7 +69,7 @@ Users' speech is transcribed when presented with a word cloud, which is also sup
 
 ## Lesson Evaluation
 
-A user's response is sent to the Meta Model API to determine if the user has responded well enough to complete a given lesson's word cloud.
+A user's transcribed response is sent to the configured OpenRouter free model to determine if the user has responded well enough to complete a given lesson's word cloud.
 
 # Dependencies
 

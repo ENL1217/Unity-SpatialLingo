@@ -35,7 +35,8 @@ namespace SpatialLingo.SpeechAndText
                 }
                 else if (m_useWit)
                 {
-                    m_wit.Configuration = m_witSettings.GetSettingsForLanguage(value);
+                    // Synthesis uses the English app; the selected language still applies to STT.
+                    m_wit.Configuration = m_witSettings.GetSettingsForLanguage(WitaiSettingsHolder.Language.English);
                 }
                 m_currentLanguage = value;
             }

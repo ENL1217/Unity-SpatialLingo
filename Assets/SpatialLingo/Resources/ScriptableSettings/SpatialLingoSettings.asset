@@ -13,7 +13,6 @@ MonoBehaviour:
   m_Name: SpatialLingoSettings
   m_EditorClassIdentifier: 
   DebugModeEnabled: 0
-  ParallelAcquisitionEnabled: 1
-  ParallelAcquisitionCount: 2
-  MetaModelApiKey: 
-  MetaModelId: 
+  ParallelAcquisitionEnabled: 0
+  ParallelAcquisitionCount: 1
+  OpenRouterModelId: nvidia/nemotron-3.5-super-vl:free

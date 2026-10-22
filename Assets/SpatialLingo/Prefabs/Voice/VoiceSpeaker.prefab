@@ -124,7 +124,7 @@ MonoBehaviour:
   - SettingsId: EN_US.46
     PrependedText: 
     AppendedText: 
-    voice: en_US.46
+    voice: wit$Charlie
     style: fast
     speed: 100
     pitch: 100
@@ -290,7 +290,7 @@ MonoBehaviour:
     SettingsId: 
     PrependedText: 
     AppendedText: 
-    voice: en_US.46
+    voice: wit$Charlie
     style: default
     speed: 100
     pitch: 100
@@ -310,7 +310,7 @@ MonoBehaviour:
   m_speaker: {fileID: 1270413854707555364}
   m_systemPitch: high
   m_systemRate: medium
-  m_systemStyle: happy
+  m_systemStyle: default
   m_systemVolume: 
 --- !u!82 &5693938726724615353
 AudioSource:

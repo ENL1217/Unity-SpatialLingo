@@ -186,7 +186,7 @@ namespace SpatialLingo.States
 #if UNITY_ANDROID
             m_hasMrukPermissions = IsScenePermissionGranted();
 #else 
-            HasMrukPermissions = true;
+            m_hasMrukPermissions = true;
 #endif
             while (!m_hasMrukPermissions)
             {
@@ -233,40 +233,9 @@ namespace SpatialLingo.States
 
         private IEnumerator WaitForMRUK()
         {
-#if UNITY_ANDROID
-            // Wait for MRUK
-            while (MRUK.Instance == null)
-            {
-                yield return new WaitForSeconds(0.1f);
-            }
-
-            // Wait for MRUK Room
-            var timeoutWaitRoomSeconds = 5.0f;
-            var timeStart = DateTime.Now;
-            var hasAsked = false;
-            while (MRUK.Instance.GetCurrentRoom() == null)
-            {
-                var timeNow = DateTime.Now;
-                var diff = timeNow - timeStart;
-                if (diff.TotalSeconds > timeoutWaitRoomSeconds)
-                {
-                    // Only ask once, then proceed.
-                    if (hasAsked)
-                    {
-                        break;
-                    }
-                    hasAsked = true;
-                    Debug.LogWarning($"AppLoadingState - No room available, requesting create or load");
-                    // Load a scene, or create if one doesn't exist:
-                    MRUK.Instance.LoadSceneFromDevice();
-                }
-                yield return new WaitForSeconds(0.1f);
-            }
-#else
+            // MainScene owns room discovery. Loading and immediately destroying
+            // another MRUK while native discovery is running races the next load.
             yield return null;
-#endif
-
-            // Continue loading process
             _ = StartCoroutine(ContinuePreloadExit());
         }
 

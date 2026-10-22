@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Meta.Utilities.MetaModelAPI;
 using Meta.Utilities.CameraTaxonTracking;
 using Meta.Utilities.ObjectClassifier;
 using Meta.XR.Samples;
@@ -1853,6 +1854,9 @@ namespace SpatialLingo.Lessons
 
                 if (!resultSuccess)
                 {
+                    if (DateTime.UtcNow < MetaModelRestApi.RetryAfterUtc ||
+                        MetaModelRestApi.SessionRequests >= MetaModelRestApi.SessionRequestLimit)
+                        break;
                     Debug.LogWarning($"LessonsManager - RetryActivitySubTaskForSuccess unsuccessful task, will attempt retry:{endpointRetryAttempts}");
                     await Task.Delay(WAIT_TIME_BETWEEN_REQUESTS_MS);
                     if (m_taxonTracker == null)

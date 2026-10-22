@@ -12,6 +12,7 @@ namespace SpatialLingo.Utilities
     {
         [Header("Spawn Position Finder")]
         [SerializeField] private FindSpawnPositions m_spawnPositionFinder;
+        private Coroutine m_spawnRoutine;
 
         [MetaCodeSample("SpatialLingo")]
         public class SpawnPositionResult
@@ -30,14 +31,23 @@ namespace SpatialLingo.Utilities
 
         public void FindSpawnPositions()
         {
-            _ = StartCoroutine(SpawnCoroutine(m_spawnPositionFinder));
+            if (m_spawnRoutine != null) StopCoroutine(m_spawnRoutine);
+            m_spawnRoutine = StartCoroutine(SpawnCoroutine(m_spawnPositionFinder));
         }
 
         private IEnumerator SpawnCoroutine(FindSpawnPositions spawnPositionFinder)
         {
-            // Wait for MRUK to have spawning data ready
+            // Room discovery can fail when an old room cannot be localized. Keep
+            // onboarding usable instead of waiting forever with only passthrough.
+            var deadline = Time.realtimeSinceStartup + 8.0f;
             while (MRUK.Instance == null || MRUK.Instance.GetCurrentRoom() == null)
             {
+                if (Time.realtimeSinceStartup >= deadline)
+                {
+                    Debug.LogWarning("RoomSense - No localized room after 8 seconds; spawning companion in front of the headset.");
+                    FindSpawnPosition?.Invoke(null);
+                    yield break;
+                }
                 yield return null;
             }
             var room = MRUK.Instance.GetCurrentRoom();
