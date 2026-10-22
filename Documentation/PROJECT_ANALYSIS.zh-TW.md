@@ -17,7 +17,7 @@ Spatial Lingo 是 Meta 的 Quest 混合實境語言練習開源專案，適合�
 
 | 項目 | 原始碼中的設定 | 開發意義 |
 | --- | --- | --- |
-| Unity | ProjectVersion 指定 6000.0.62f1；README 最低 6000.0.51f1 | 首次重現建議使用指定版本；升級另開變更 |
+| Unity | 上游 ProjectVersion 指定 6000.0.62f1；README 最低 6000.0.51f1 | 本 fork 採本機新版 6000.3.27f1，不降版；匯入與相容性修正另開變更 |
 | Meta XR SDK | Core、Interaction、Voice、MRUK 等為 81.0.0 | 先保留這組相依版本 |
 | 本機推論 | com.unity.ai.inference 2.2.1 | 執行 YOLO 與臉部偵測模型 |
 | XR | OpenXR 1.16.0、Meta OpenXR 2.3.0 | Quest 裝置整合 |
@@ -28,7 +28,7 @@ Spatial Lingo 是 Meta 的 Quest 混合實境語言練習開源專案，適合�
 
 依據：[ProjectVersion](../ProjectSettings/ProjectVersion.txt)、[manifest](../Packages/manifest.json)、[Player Settings](../ProjectSettings/ProjectSettings.asset)、[建置說明](BuildInstructions.md)。
 
-本機已找到 Unity 6000.3.27f1，與專案指定版本不同。本次完成原始碼解析及資產下載，尚未在 Unity 匯入、編譯或於 Quest 實機驗證；也沒有呼叫付費模型或語音服務。
+本 fork 的開發基準採本機已安裝的 **Unity 6000.3.27f1**，不降回 6000.0。上游 ProjectVersion 尚保留原值；新版匯入、套件與 API 相容性修正需要另外驗證，不能將版本文字更新視為完成遷移。目前已完成原始碼解析及資產下載，尚未在 Unity 匯入、編譯或於 Quest 實機驗證；也沒有呼叫付費模型或語音服務。
 
 完整相機體驗需要支援 Passthrough Camera API 的裝置與系統版本。Android manifest 雖列出 Quest 2、Pro、3、3S，仍不能僅憑這個清單判定相機功能可在所有機型運作。首次實機驗收優先使用 Quest 3／3S，並核對 [Meta 相機 API 文件](https://developers.meta.com/horizon/documentation/unity/unity-pca-overview/)。
 
@@ -104,9 +104,37 @@ AssistantAI 列舉了英文、西班牙文、越南文、法文、德文、阿�
 
 ## 開發階段與驗收
 
+### 本機服務與費用目標
+
+後續以本機運算為主，預設不呼叫付費雲端服務。這裡的本機方案是 **Quest 3 執行畫面、手部互動和物件追蹤，Windows PC 經區域網路提供模型與語音服務**。模型下載完成後可不依賴雲端推論；PC 仍須開機，並有硬體與電力成本。所有模型都直接放進 Quest、完全不連 PC，是另外一項裝置端推論工程。
+
+本機已確認有 RTX 4070 12GB、64GB RAM、Ollama，以及 qwen2.5vl:7b 和 llama3.2-vision:latest。可先使用現有 qwen2.5vl:7b 驗證教材生成與看圖；視覺、JSON 契約及互動延遲仍需實測。Quest 呼叫 PC 時不能使用 Quest 自己的 localhost，需透過受控的區網服務端點或 USB 轉送。
+
+以專案杯子範例圖進行兩次本機短測：首次請求在 90 秒逾時；後續請求約 16.24 秒完成，回傳「茶杯」的 JSON。後者仍未遵守指定的英文形容詞和欄位內容要求，因此只能證明本機視覺推論可回應，尚未通過教材契約或即時互動驗收。接入時需要輸出驗證、快取與延遲優化。
+
+| 功能 | 本機改造方向 | 與原版差異 |
+| --- | --- | --- |
+| 物件偵測 | 保留 Quest 端 YOLO | 已是本機執行 |
+| 物件描述與教材 | PC 上的 Ollama 視覺語言模型 | 取代 Meta Model API，需轉換請求與驗證回應 |
+| 口說文字判定 | 本機文字模型或同一視覺語言模型 | 仍評估轉寫內容；不等於音訊發音評分 |
+| 語音辨識 | PC 的 faster-whisper 等本機 STT | 取代 Wit.ai 轉寫；需串接收音與完成事件 |
+| 語音合成 | 本機 TTS，依語言挑選語音 | 取代 Wit.ai 合成；先驗證英文與繁中品質 |
+
+延遲與資源配置可先用 YOLO 類別和詞彙庫生成基本教材，僅在需要更精確物件描述時呼叫視覺模型；教材、固定台詞和音訊可快取。這能減少推論次數，但會犧牲部分依影像細節產生內容的能力。STT 和 TTS 的模型、語音及授權需在選型時逐項確認。
+
+OpenCode 可以作為開發程式的 agent；它不會讓背後的模型自動免費，也不是本 app 必需的推論層。[OpenCode 支援本機模型服務](https://opencode.ai/v2/docs/models)，而 [一般推論 API](https://opencode.ai/v2/docs/console/api/inference) 也提供部分免費 chat 模型。免費端點是否具備視覺能力、限制與持續可用性需依當時服務確認，不能當作永久、無限的預算承諾。OpenCode Go 另有 [以 coding agent 流量為主的使用要求](https://opencode.ai/v2/docs/console/go/)，不應直接將 coding 方案視為語言學習 app 的通用後端。
+
+免費雲端服務僅列為使用者選用的後備來源；任何失敗都不應自動轉向付費供應商。目前原 app 尚未接上上述本機服務。
+
+### 免編譯安裝的確認結果
+
+2026 年 10 月 23 日查詢上游 GitHub，Releases 為空；Actions 可見的兩個 artifacts 是 SARIF 程式掃描報告，沒有 APK。[官方商店頁](https://www.meta.com/experiences/spatial-lingo-language-practice/24846121391731831/) 存在，但已連線的 Quest 3 實際顯示「你所在的地區無法使用此應用程式」。本次未能安裝。
+
+商店版的實際版本與是否使用官方託管服務，也不能只依 GitHub 的 2.0.0 推定。若要安裝自訂本機 AI 版本，仍須先完成程式整合，再產出一次 APK；之後的 PC 模型與教材服務更新可依介面相容程度獨立進行。
+
 | 階段 | 工作 | 驗收條件 |
 | --- | --- | --- |
-| 0 重現原版 | 使用指定 Unity 版本，還原套件與 LFS，配置自己的模型和語音設定 | 編譯成功；Quest 可授權相機／麥克風、辨識物件、顯示字雲、播放語音並完成一次練習 |
+| 0 新版執行基礎 | 使用 Unity 6000.3.27f1 匯入，保留 Quest 場景並修正套件與 API 相容性；接本機服務 | 編譯成功；Quest 可授權相機／麥克風、辨識物件、顯示字雲、播放語音並完成一次練習 |
 | 1 繁中學英文 | 繁中介面與引導、英文目標語、語言資料整合、字型、模型與語音介面、本機 key 分離 | 同一物件顯示繁中解釋及英文教材；英文口說可通關；錯誤理由可用繁中呈現；無中文字缺字 |
 | 2 學習紀錄 | 本機持久化、已學詞彙、練習次數、最近學習時間與複習安排 | 關閉重開後保留進度；換語言不混用紀錄；可清除或匯出個人紀錄 |
 | 3 多語與新情境 | 新目標語、餐廳／旅遊／工作情境、跨物件造句、角色對話 | 每一新增語言分別驗證教材、字型、STT、TTS 和回饋；情境任務有明確完成條件 |
