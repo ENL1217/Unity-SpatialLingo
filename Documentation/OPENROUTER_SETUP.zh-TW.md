@@ -82,7 +82,7 @@ adb shell monkey -p com.enl1217.aienglish 1
 
 APK 簽章驗證通過，應用 ID、ARM64 架構與入口 activity 經 aapt 確認。已安裝至連線的 Quest 3；私人設定檔的 PC／裝置 SHA-256 校驗一致，相機、錄音與空間權限皆已授予。完整看物件與真人口說驗收仍需實際操作。
 
-首次佩戴測試回報同意後只見 Logo／透視背景。裝置紀錄發現 CameraTaxonTracker 在相機未就緒時，於主執行緒同步遞迴呼叫帶 Thread.Sleep 的重試，阻塞相機和引導的後續更新。已改為可取消的非阻塞等待，移除 Thread.Abort；並讓 WebCamTextureManager 等待透視層初始化、停用時停止對應協程，避免過早放棄相機啟動。相機缺席的回歸測試確認主迴圈可繼續更新且能停止／取消；裝置紀錄已確認修正版建立 1280×960 相機影像並完成本機物件分類。仍只見透視背景的第二個原因，是 RoomSense 無限等待無法定位的房間。LoadingScene 與 MainScene 原本還會重複啟動 MRUK discovery，前者已停用載入，只保留 MainScene 的房間探索；RoomSense 等待 8 秒仍無房間時，會以頭顯前方約 1.1 公尺、眼睛下方 0.8 公尺的可及位置繼續角色引導。已有可定位的房間可直接沿用；重新掃描能改善房間定位，但不應成為進入引導的必要條件。這一輪修正仍需在頭顯驗收角色顯示。
+首次佩戴測試回報同意後只見 Logo／透視背景。裝置紀錄發現 CameraTaxonTracker 在相機未就緒時，於主執行緒同步遞迴呼叫帶 Thread.Sleep 的重試，阻塞相機和引導的後續更新。已改為可取消的非阻塞等待，移除 Thread.Abort；並讓 WebCamTextureManager 等待透視層初始化、停用時停止對應協程，避免過早放棄相機啟動。相機缺席的回歸測試確認主迴圈可繼續更新且能停止／取消；裝置紀錄已確認修正版建立 1280×960 相機影像並完成本機物件分類。仍只見透視背景的第二個原因，是 RoomSense 無限等待無法定位的房間。LoadingScene 與 MainScene 原本還會重複啟動 MRUK discovery，前者已停用載入，只保留 MainScene 的房間探索；RoomSense 等待 8 秒仍無房間時，會以頭顯前方約 1.1 公尺、眼睛下方 0.8 公尺的可及位置繼續角色引導。已有可定位的房間可直接沿用；重新掃描能改善房間定位，但不應成為進入引導的必要條件。修正版已在 Quest 3 實機觸發房間逾時備援，紀錄依序出現 companion ready 與 companion intro is visible；裝置截圖確認角色、表情、土堆顯示，TTS 播放完成。完整抓取角色、課程選擇及真人口說仍待使用者操作驗收。
 
 OpenRouter 實際連線測試：專用 key 的 Credit limit 設為 $0，沒有新增付款資料；NVIDIA 免費模型成功產生雙語 Wordclouds 與布林 Pass／文字 Reason 判定，兩次請求各回報 cost=0。關閉可選推理後，樣本杯子圖片約 24 秒、文字判定約 2.5 秒。當時帳戶免費額度顯示每日 50 次；實際配額與上游共享限流會變動。
 
